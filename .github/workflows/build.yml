@@ -1,4 +1,4 @@
-name: Build APK
+name: Build APKname: Build APK
 
 on:
   push:
@@ -18,6 +18,11 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
+      - name: Download Xray Library
+        run: |
+          mkdir -p app/libs
+          curl -sL -o app/libs/libXray.aar https://github.com/2dust/AndroidLibXrayLite/releases/latest/download/libv2ray.aar
+
       - name: Create wrapper properties
         run: |
           mkdir -p gradle/wrapper
@@ -25,11 +30,6 @@ jobs:
           curl -sL -o gradle/wrapper/gradle-wrapper.jar https://raw.githubusercontent.com/gradle/gradle/master/gradle/wrapper/gradle-wrapper.jar
           curl -sL -o gradlew https://raw.githubusercontent.com/gradle/gradle/master/gradlew
           chmod +x gradlew
-
-      - name: Download Xray Library
-        run: |
-          mkdir -p app/libs
-          curl -sL -o app/libs/libXray.aar https://github.com/2dust/AndroidLibXrayLite/releases/latest/download/libv2ray.aar
 
       - name: Build with Gradle
         run: ./gradlew assembleDebug
