@@ -30,6 +30,9 @@ jobs:
       - name: Download Gradle Wrapper
         run: curl -sL -o gradle/wrapper/gradle-wrapper.jar https://raw.githubusercontent.com/gradle/gradle/master/gradle/wrapper/gradle-wrapper.jar
 
+      - name: Download gradlew script
+        run: curl -sL -o gradlew https://raw.githubusercontent.com/gradle/gradle/master/gradlew
+
       - name: Download Xray Library
         run: mkdir -p app/libs && curl -sL -o app/libs/libXray.aar https://github.com/2dust/AndroidLibXrayLite/releases/latest/download/libv2ray.aar
 
