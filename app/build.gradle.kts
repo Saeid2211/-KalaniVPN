@@ -39,7 +39,7 @@ android {
 }
 
 dependencies {
-    implementation(files("libs/libXray.aar"))
+    implementation(project(":app:libs"))
     
     implementation(platform("androidx.compose:compose-bom:2024.02.00"))
     implementation("androidx.compose.ui:ui")
