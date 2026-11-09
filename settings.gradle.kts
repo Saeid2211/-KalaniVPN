@@ -15,3 +15,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "KalaniVPN"
 include(":app")
+include(":app:libs")
