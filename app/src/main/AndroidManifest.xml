@@ -10,7 +10,8 @@
         android:allowBackup="false"
         android:label="Kalani VPN"
         android:supportsRtl="true"
-        android:usesCleartextTraffic="false">
+        android:theme="@android:style/Theme.NoTitleBar">
+        
         <activity
             android:name=".MainActivity"
             android:exported="true">
@@ -19,6 +20,7 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        
         <service
             android:name=".KalaniVpnService"
             android:permission="android.permission.BIND_VPN_SERVICE"
