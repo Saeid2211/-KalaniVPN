@@ -10,7 +10,6 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -32,15 +31,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        
         setContent {
-            MaterialTheme(
-                colorScheme = darkColorScheme(
-                    primary = Color(0xFF1F9167),
-                    background = Color(0xFF080C14),
-                    surface = Color(0xFF111926)
-                )
-            ) {
+            MaterialTheme(colorScheme = darkColorScheme(primary = Color(0xFF1F9167), background = Color(0xFF080C14))) {
                 MainScreen()
             }
         }
@@ -51,14 +43,14 @@ class MainActivity : ComponentActivity() {
         Scaffold(containerColor = Color(0xFF080C14)) { padding ->
             Column(
                 modifier = Modifier.fillMaxSize().padding(padding).padding(24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
             ) {
-                Text("KALANI VPN", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                Spacer(modifier = Modifier.height(40.dp))
+                Text("KALANI VPN", fontSize = 32.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                Spacer(modifier = Modifier.height(50.dp))
 
-                // دکمه اتصال مدرن
                 Box(
-                    modifier = Modifier.size(140.dp).background(
+                    modifier = Modifier.size(150.dp).background(
                         color = if (isConnected) Color(0xFF2DDC87) else Color(0xFF1F9167),
                         shape = CircleShape
                     ),
@@ -77,28 +69,12 @@ class MainActivity : ComponentActivity() {
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent)
                     ) {
-                        Text(if (isConnected) "STOP" else "START", fontSize = 20.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                        Text(if (isConnected) "STOP" else "START", fontSize = 22.sp, color = Color.White, fontWeight = FontWeight.Bold)
                     }
                 }
 
-                Spacer(modifier = Modifier.height(40.dp))
-                
-                Text(
-                    text = if (isConnected) "Connected" else "Disconnected",
-                    color = if (isConnected) Color(0xFF2DDC87) else Color(0xFFFF6978),
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold
-                )
-                
-                Spacer(modifier = Modifier.height(40.dp))
-                
-                // کارت نمایش سرعت (فقط ظاهر برای دمو)
-                Card(colors = CardDefaults.cardColors(containerColor = Color(0xFF111926))) {
-                    Row(modifier = Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("↓ 0.00 Mbps", color = Color(0xFF2DDC87), fontWeight = FontWeight.Bold)
-                        Text("↑ 0.00 Mbps", color = Color(0xFFFF6978), fontWeight = FontWeight.Bold)
-                    }
-                }
+                Spacer(modifier = Modifier.height(30.dp))
+                Text(if (isConnected) "Connected" else "Disconnected", color = if (isConnected) Color(0xFF2DDC87) else Color(0xFFFF6978), fontSize = 20.sp)
             }
         }
     }
