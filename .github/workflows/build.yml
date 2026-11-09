@@ -26,6 +26,11 @@ jobs:
           curl -sL -o gradlew https://raw.githubusercontent.com/gradle/gradle/master/gradlew
           chmod +x gradlew
 
+      - name: Download Xray Library
+        run: |
+          mkdir -p app/libs
+          curl -sL -o app/libs/libXray.aar https://github.com/2dust/AndroidLibXrayLite/releases/latest/download/libv2ray.aar
+
       - name: Build with Gradle
         run: ./gradlew assembleDebug
 
