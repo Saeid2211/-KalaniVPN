@@ -39,7 +39,8 @@ android {
 }
 
 dependencies {
-    implementation(files("libs/libXray.aar"))
+    implementation("com.github.2dust:AndroidLibXrayLite:main-SNAPSHOT")
+    
     implementation(platform("androidx.compose:compose-bom:2024.02.00"))
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.material3:material3")
