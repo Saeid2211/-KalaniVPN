@@ -284,6 +284,7 @@ def parse_country(payload: Any) -> tuple[str | None, str | None]:
 
 
 def curl_to_file(proxy: str, url: str, destination: Path, timeout: int = 7) -> tuple[int, str] | None:
+    provider = urllib.parse.urlsplit(url).netloc
     command = [
         "curl", "--silent", "--show-error", "--location",
         "--noproxy", "", "--proxy", proxy,
@@ -293,10 +294,24 @@ def curl_to_file(proxy: str, url: str, destination: Path, timeout: int = 7) -> t
     try:
         done = subprocess.run(command, capture_output=True, text=True, timeout=timeout + 3, check=False)
         if done.returncode != 0:
+            detail = (done.stderr or "").strip().replace("\\n", " ")[:180]
+            print(f"GEO_CURL_FAIL provider={provider} exit={done.returncode} detail={detail}", flush=True)
             return None
-        status = int(done.stdout.strip()[-3:]) if done.stdout.strip() else 0
+
+        raw_status = done.stdout.strip()
+        status = int(raw_status[-3:]) if raw_status else 0
+
+        if status != 200:
+            print(f"GEO_HTTP_FAIL provider={provider} status={status}", flush=True)
+
         return status, done.stdout
-    except Exception:
+
+    except subprocess.TimeoutExpired:
+        print(f"GEO_TIMEOUT provider={provider}", flush=True)
+        return None
+    except Exception as exc:
+        detail = str(exc).replace("\\n", " ")[:160]
+        print(f"GEO_EXCEPTION provider={provider} type={type(exc).__name__} detail={detail}", flush=True)
         return None
 
 
