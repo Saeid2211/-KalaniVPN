@@ -46,7 +46,7 @@ MIN_DOWNLOAD_BPS = 65_536       # 512 kbit/s sustained floor
 MIN_UPLOAD_BPS = 16_384         # 128 kbit/s sustained floor
 DOWNLOAD_URL = "https://speed.cloudflare.com/__down?bytes=1048576"
 UPLOAD_URL = "https://speed.cloudflare.com/__up"
-GEO_URLS = ("https://ipwho.is/", "https://ipapi.co/json/")
+GEO_URLS = ("https://www.cloudflare.com/cdn-cgi/trace", "https://get.geojs.io/v1/ip/geo.json")
 USER_AGENT = "KalaniVPN3-ServerPool/1.0"
 
 COUNTRY_NAMES = {
@@ -269,19 +269,39 @@ def convert_one(uri: str, temp_dir: Path) -> dict[str, Any] | None:
         return None
 
 
+
 def parse_country(payload: Any) -> tuple[str | None, str | None]:
-    if not isinstance(payload, dict):
+    if isinstance(payload, str):
+        fields: dict[str, str] = {}
+        for line in payload.splitlines():
+            if "=" in line:
+                key, value = line.split("=", 1)
+                fields[key.strip()] = value.strip()
+
+        code = fields.get("loc") or fields.get("country_code") or fields.get("country")
+        ip = fields.get("ip")
+
+    elif isinstance(payload, dict):
+        code = (
+            payload.get("country_code")
+            or payload.get("countryCode")
+            or payload.get("loc")
+            or payload.get("country")
+        )
+        ip = payload.get("ip") if isinstance(payload.get("ip"), str) else None
+
+    else:
         return None, None
-    code = payload.get("country_code") or payload.get("countryCode") or payload.get("country")
+
     if isinstance(code, str):
         code = code.strip().upper()
         if len(code) == 2 and code.isalpha():
-            return code, payload.get("ip") if isinstance(payload.get("ip"), str) else None
-        normalized = COUNTRY_NAMES.get(code.upper())
+            return code, ip
+        normalized = COUNTRY_NAMES.get(code)
         if normalized:
-            return normalized, payload.get("ip") if isinstance(payload.get("ip"), str) else None
-    return None, payload.get("ip") if isinstance(payload.get("ip"), str) else None
+            return normalized, ip
 
+    return None, ip
 
 def curl_to_file(proxy: str, url: str, destination: Path, timeout: int = 7) -> tuple[int, str] | None:
     provider = urllib.parse.urlsplit(url).netloc
@@ -315,24 +335,62 @@ def curl_to_file(proxy: str, url: str, destination: Path, timeout: int = 7) -> t
         return None
 
 
-def verify_exit_country(proxy: str, temp_dir: Path) -> tuple[str | None, str | None, str | None]:
-    observations: list[tuple[str, str | None]] = []
-    for index, url in enumerate(GEO_URLS):
-        output = temp_dir / f"geo-{index}.json"
-        result = curl_to_file(proxy, url, output, timeout=7)
-        if not result or result[0] != 200:
-            return None, None, "geolocation-provider-failed"
-        try:
-            code, ip = parse_country(json.loads(output.read_text(encoding="utf-8")))
-        except Exception:
-            return None, None, "geolocation-invalid-response"
-        if not code:
-            return None, ip, "geolocation-country-missing"
-        observations.append((code, ip))
-    if observations[0][0] != observations[1][0]:
-        return None, observations[0][1], "geolocation-disagreement"
-    return observations[0][0], observations[0][1] or observations[1][1], None
 
+def verify_exit_country(proxy: str, temp_dir: Path) -> tuple[str | None, str | None, str | None]:
+    observations: list[tuple[str, str | None, str]] = []
+    provider_failures = 0
+
+    for index, url in enumerate(GEO_URLS):
+        provider = urllib.parse.urlsplit(url).netloc
+        output = temp_dir / f"geo-{index}.json"
+
+        result = curl_to_file(proxy, url, output, timeout=7)
+
+        if not result or result[0] != 200:
+            provider_failures += 1
+            continue
+
+        try:
+            raw = output.read_text(encoding="utf-8")
+            try:
+                payload = json.loads(raw)
+            except json.JSONDecodeError:
+                # Cloudflare Trace uses key=value plain text.
+                payload = raw
+        except Exception as exc:
+            print(
+                f"GEO_INVALID_RESPONSE provider={provider} type={type(exc).__name__}",
+                flush=True,
+            )
+            provider_failures += 1
+            continue
+
+        code, ip = parse_country(payload)
+        if not code:
+            print(f"GEO_COUNTRY_MISSING provider={provider}", flush=True)
+            provider_failures += 1
+            continue
+
+        observations.append((code, ip, provider))
+
+    # Fail closed: both independent providers must return valid country data.
+    if provider_failures or len(observations) != len(GEO_URLS):
+        exit_ip = next((item[1] for item in observations if item[1]), None)
+        return None, exit_ip, "geolocation-provider-failed"
+
+    countries = {item[0] for item in observations}
+    if len(countries) != 1:
+        providers = ",".join(item[2] for item in observations)
+        codes = ",".join(item[0] for item in observations)
+        print(
+            f"GEO_COUNTRY_DISAGREEMENT providers={providers} codes={codes}",
+            flush=True,
+        )
+        return None, observations[0][1], "geolocation-disagreement"
+
+    country = observations[0][0]
+    exit_ip = next((item[1] for item in observations if item[1]), None)
+    return country, exit_ip, None
 
 def curl_metrics(command: list[str], timeout: int) -> list[float] | None:
     try:
