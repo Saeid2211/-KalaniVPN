@@ -394,6 +394,7 @@ def test_candidate(index: int, candidate: dict[str, str], upload_payload: Path) 
         temp_dir = Path(work)
         outbound = convert_one(candidate["uri"], temp_dir)
         if not outbound:
+            print(f"REJECT candidate={index+1} stage=uri-conversion", flush=True)
             return None
         port = 20000 + index
         config_path = temp_dir / "sing-box-test.json"
@@ -406,6 +407,7 @@ def test_candidate(index: int, candidate: dict[str, str], upload_payload: Path) 
             check=False,
         )
         if checked.returncode != 0:
+            print(f"REJECT candidate={index+1} stage=sing-box-config-check", flush=True)
             return None
 
         process = subprocess.Popen(
@@ -419,6 +421,7 @@ def test_candidate(index: int, candidate: dict[str, str], upload_payload: Path) 
             ready = False
             for _ in range(30):
                 if process.poll() is not None:
+                    print(f"REJECT candidate={index+1} stage=sing-box-exited", flush=True)
                     return None
                 try:
                     with socket.create_connection(("127.0.0.1", port), timeout=0.25):
@@ -427,28 +430,34 @@ def test_candidate(index: int, candidate: dict[str, str], upload_payload: Path) 
                 except OSError:
                     time.sleep(0.2)
             if not ready:
+                print(f"REJECT candidate={index+1} stage=socks-not-ready", flush=True)
                 return None
 
             country, exit_ip, geo_error = verify_exit_country(proxy, temp_dir)
             if geo_error or country not in ALLOWED_COUNTRIES:
+                reason = geo_error or "country-not-allowed"
+                print(f"REJECT candidate={index+1} stage={reason}", flush=True)
                 return None
 
             downloads: list[dict[str, float]] = []
-            for _ in range(2):
+            for round_no in (1, 2):
                 sample = test_download(proxy)
                 if not sample:
+                    print(f"REJECT candidate={index+1} stage=download-round-{round_no}", flush=True)
                     return None
                 downloads.append(sample)
                 time.sleep(0.5)
 
             upload = test_upload(proxy, upload_payload)
             if not upload:
+                print(f"REJECT candidate={index+1} stage=upload", flush=True)
                 return None
 
             median_download = statistics.median(item["bps"] for item in downloads)
             median_ttfb = statistics.median(item["ttfb"] for item in downloads)
             upload_bps = upload["bps"]
             if median_download < MIN_DOWNLOAD_BPS or upload_bps < MIN_UPLOAD_BPS:
+                print(f"REJECT candidate={index+1} stage=throughput-below-threshold", flush=True)
                 return None
 
             server = outbound.get("server", "")
@@ -481,7 +490,8 @@ def test_candidate(index: int, candidate: dict[str, str], upload_payload: Path) 
                     "score": score_node(median_download, upload_bps, median_ttfb),
                 },
             }
-        except Exception:
+        except Exception as exc:
+            print(f"REJECT candidate={index+1} stage=exception-{type(exc).__name__}", flush=True)
             return None
         finally:
             if process.poll() is None:
@@ -541,7 +551,8 @@ def main() -> int:
             for future in concurrent.futures.as_completed(futures):
                 try:
                     result = future.result()
-                except Exception:
+                except Exception as exc:
+                    print(f"REJECT worker-exception-{type(exc).__name__}", flush=True)
                     result = None
                 if result:
                     passed.append(result)
