@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-11-22T19:14:19Z",
+  "generated_at": "2026-11-22T23:52:41Z",
   "engine": {
     "name": "sing-box",
     "version": "1.14.4"
@@ -27,7 +27,7 @@
     "US": 5,
     "DE": 1,
     "NL": 5,
-    "GB": 0,
+    "GB": 2,
     "FR": 4
   },
   "nodes": [
@@ -46,60 +46,63 @@
         "method": "aes-128-gcm",
         "password": "shadowsocks"
       },
-      "source": "raw.githubusercontent.comtions/main/output/by-country/v2ray-base64-US.txt",
+      "source": "previous-pool",
       "exit_ip": "156.146.38.168",
       "status": "verified",
-      "tested_at": "2026-11-22T19:14:10Z",
+      "tested_at": "2026-11-22T23:51:29Z",
       "metrics": {
-        "download_mbps": 32.447,
-        "upload_mbps": 9.321,
+        "download_mbps": 44.108,
+        "upload_mbps": 17.233,
         "download_bytes_each_round": 1048576,
         "upload_bytes": 262144,
-        "ttfb_ms": 109.5,
+        "ttfb_ms": 88.6,
         "download_rounds_passed": 2,
-        "score": 99.56
+        "score": 99.65
       }
     },
     {
-      "id": "6f717e1e811f2d86708a",
+      "id": "0ef517621210bd484283",
       "country": "US",
-      "protocol": "shadowsocks",
-      "server": "95.215.201.18",
-      "server_port": 19999,
-      "uri": "ss://YWVzLTI1Ni1nY206WlJwZ2FCZUd4dEVOSVhndmhwa1pCS3o5R25XUlMyZFljeDlPK2EyaXdOND0@95.215.201.18:19999#shadowsocks-1875129452",
+      "protocol": "trojan",
+      "server": "170.101.101.211",
+      "server_port": 443,
+      "uri": "trojan://0ab6c98dae3b48e8b9c4a776b6c9c19a@170.101.101.211:443?sni=api.explorecreativejobsandenhanceyourcareerportfolio.com&type=tcp#trojan-1942154538",
       "outbound": {
-        "type": "shadowsocks",
-        "tag": "kalani-6f717e1e811f",
-        "server": "95.215.201.18",
-        "server_port": 19999,
-        "method": "aes-256-gcm",
-        "password": "ZRpgaBeGxtENIXgvhpkZBKz9GnWRS2dYcx9O+a2iwN4="
+        "type": "trojan",
+        "tag": "kalani-0ef517621210",
+        "server": "170.101.101.211",
+        "server_port": 443,
+        "password": "0ab6c98dae3b48e8b9c4a776b6c9c19a",
+        "tls": {
+          "enabled": true,
+          "server_name": "api.explorecreativejobsandenhanceyourcareerportfolio.com"
+        }
       },
       "source": "raw.githubusercontent.comtions/main/output/by-country/v2ray-base64-US.txt",
-      "exit_ip": "95.215.201.142",
+      "exit_ip": "170.101.101.211",
       "status": "verified",
-      "tested_at": "2026-11-22T19:12:49Z",
+      "tested_at": "2026-11-22T23:52:28Z",
       "metrics": {
-        "download_mbps": 19.272,
-        "upload_mbps": 7.233,
+        "download_mbps": 18.26,
+        "upload_mbps": 7.925,
         "download_bytes_each_round": 1048576,
         "upload_bytes": 262144,
-        "ttfb_ms": 222.1,
+        "ttfb_ms": 314.7,
         "download_rounds_passed": 2,
-        "score": 96.71
+        "score": 98.51
       }
     },
     {
-      "id": "4b60c196ffdf1f8ca2cf",
+      "id": "ccf97d678e7e2240e988",
       "country": "US",
       "protocol": "vless",
-      "server": "169.40.42.202",
+      "server": "169.40.42.229",
       "server_port": 443,
-      "uri": "vless://d65cc14c-f53f-4fe2-b262-97856601319c@169.40.42.202:443?flow=xtls-rprx-vision&fp=ios&pbk=e2RLf57Li_-MDZGE9ss1BWPgP54mqRb5PfXhW2jcVVg&security=reality&sid=c39cc7310a&sni=yahoo.com&type=raw#vless-1828293967",
+      "uri": "vless://d65cc14c-f53f-4fe2-b262-97856601319c@169.40.42.229:443?flow=xtls-rprx-vision&fp=ios&host=yahoo.com&path=%2F&pbk=e2RLf57Li_-MDZGE9ss1BWPgP54mqRb5PfXhW2jcVVg&security=reality&sid=c39cc7310a&sni=yahoo.com&type=tcp#vless-1835850891",
       "outbound": {
         "type": "vless",
-        "tag": "kalani-4b60c196ffdf",
-        "server": "169.40.42.202",
+        "tag": "kalani-ccf97d678e7e",
+        "server": "169.40.42.229",
         "server_port": 443,
         "uuid": "d65cc14c-f53f-4fe2-b262-97856601319c",
         "flow": "xtls-rprx-vision",
@@ -119,17 +122,17 @@
         "packet_encoding": "xudp"
       },
       "source": "raw.githubusercontent.comtions/main/output/by-country/v2ray-base64-US.txt",
-      "exit_ip": "45.144.112.54",
+      "exit_ip": "162.120.69.84",
       "status": "verified",
-      "tested_at": "2026-11-22T19:14:02Z",
+      "tested_at": "2026-11-22T23:52:34Z",
       "metrics": {
-        "download_mbps": 15.421,
-        "upload_mbps": 5.002,
+        "download_mbps": 19.463,
+        "upload_mbps": 7.303,
         "download_bytes_each_round": 1048576,
         "upload_bytes": 262144,
-        "ttfb_ms": 284.3,
+        "ttfb_ms": 253.9,
         "download_rounds_passed": 2,
-        "score": 87.51
+        "score": 96.81
       }
     },
     {
@@ -161,31 +164,31 @@
         },
         "packet_encoding": "xudp"
       },
-      "source": "raw.githubusercontent.comtions/main/output/by-country/v2ray-base64-US.txt",
+      "source": "previous-pool",
       "exit_ip": "185.195.57.168",
       "status": "verified",
-      "tested_at": "2026-11-22T19:14:15Z",
+      "tested_at": "2026-11-22T23:51:30Z",
       "metrics": {
-        "download_mbps": 14.308,
-        "upload_mbps": 4.552,
+        "download_mbps": 16.05,
+        "upload_mbps": 6.813,
         "download_bytes_each_round": 1048576,
         "upload_bytes": 262144,
-        "ttfb_ms": 329.5,
+        "ttfb_ms": 346.0,
         "download_rounds_passed": 2,
-        "score": 82.09
+        "score": 94.91
       }
     },
     {
-      "id": "0b581392c3a244446181",
+      "id": "21dd3059655334097317",
       "country": "US",
       "protocol": "vless",
-      "server": "169.40.42.229",
+      "server": "169.40.42.35",
       "server_port": 443,
-      "uri": "vless://d65cc14c-f53f-4fe2-b262-97856601319c@169.40.42.229:443?flow=xtls-rprx-vision&fp=random&pbk=e2RLf57Li_-MDZGE9ss1BWPgP54mqRb5PfXhW2jcVVg&security=reality&sid=c39cc7310a&sni=yahoo.com&type=tcp#vless-1828149299",
+      "uri": "vless://d65cc14c-f53f-4fe2-b262-97856601319c@169.40.42.35:443?flow=xtls-rprx-vision&fp=ios&pbk=e2RLf57Li_-MDZGE9ss1BWPgP54mqRb5PfXhW2jcVVg&security=reality&sid=c39cc7310a&sni=yahoo.com&type=tcp#vless-1827162804",
       "outbound": {
         "type": "vless",
-        "tag": "kalani-0b581392c3a2",
-        "server": "169.40.42.229",
+        "tag": "kalani-21dd30596553",
+        "server": "169.40.42.35",
         "server_port": 443,
         "uuid": "d65cc14c-f53f-4fe2-b262-97856601319c",
         "flow": "xtls-rprx-vision",
@@ -194,7 +197,7 @@
           "server_name": "yahoo.com",
           "utls": {
             "enabled": true,
-            "fingerprint": "random"
+            "fingerprint": "ios"
           },
           "reality": {
             "enabled": true,
@@ -205,17 +208,17 @@
         "packet_encoding": "xudp"
       },
       "source": "raw.githubusercontent.comtions/main/output/by-country/v2ray-base64-US.txt",
-      "exit_ip": "162.120.69.84",
+      "exit_ip": "185.195.57.173",
       "status": "verified",
-      "tested_at": "2026-11-22T19:14:10Z",
+      "tested_at": "2026-11-22T23:52:34Z",
       "metrics": {
-        "download_mbps": 13.491,
-        "upload_mbps": 4.97,
+        "download_mbps": 16.284,
+        "upload_mbps": 5.847,
         "download_bytes_each_round": 1048576,
         "upload_bytes": 262144,
-        "ttfb_ms": 362.8,
+        "ttfb_ms": 343.2,
         "download_rounds_passed": 2,
-        "score": 80.46
+        "score": 91.9
       }
     },
     {
@@ -237,105 +240,18 @@
           "insecure": true
         }
       },
-      "source": "raw.githubusercontent.comtions/main/output/by-country/v2ray-base64-DE.txt",
+      "source": "previous-pool",
       "exit_ip": "3.76.221.4",
       "status": "verified",
-      "tested_at": "2026-11-22T19:13:07Z",
+      "tested_at": "2026-11-22T23:51:35Z",
       "metrics": {
-        "download_mbps": 1.915,
-        "upload_mbps": 2.46,
+        "download_mbps": 6.935,
+        "upload_mbps": 3.213,
         "download_bytes_each_round": 1048576,
         "upload_bytes": 262144,
-        "ttfb_ms": 861.6,
+        "ttfb_ms": 388.2,
         "download_rounds_passed": 2,
-        "score": 30.82
-      }
-    },
-    {
-      "id": "68b821d7a3b78e4c9b8d",
-      "country": "NL",
-      "protocol": "shadowsocks",
-      "server": "82.38.31.48",
-      "server_port": 8080,
-      "uri": "ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTpvWklvQTY5UTh5aGNRVjhrYTNQYTNB@82.38.31.48:8080#shadowsocks-1827146514",
-      "outbound": {
-        "type": "shadowsocks",
-        "tag": "kalani-68b821d7a3b7",
-        "server": "82.38.31.48",
-        "server_port": 8080,
-        "method": "chacha20-ietf-poly1305",
-        "password": "oZIoA69Q8yhcQV8ka3Pa3A"
-      },
-      "source": "raw.githubusercontent.comtions/main/output/by-country/v2ray-base64-NL.txt",
-      "exit_ip": "193.29.139.219",
-      "status": "verified",
-      "tested_at": "2026-11-22T19:13:15Z",
-      "metrics": {
-        "download_mbps": 6.565,
-        "upload_mbps": 2.197,
-        "download_bytes_each_round": 1048576,
-        "upload_bytes": 262144,
-        "ttfb_ms": 458.4,
-        "download_rounds_passed": 2,
-        "score": 47.6
-      }
-    },
-    {
-      "id": "72781c80b37666b080fc",
-      "country": "NL",
-      "protocol": "shadowsocks",
-      "server": "82.38.31.62",
-      "server_port": 8080,
-      "uri": "ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTpvWklvQTY5UTh5aGNRVjhrYTNQYTNB@82.38.31.62:8080#shadowsocks-1827146475",
-      "outbound": {
-        "type": "shadowsocks",
-        "tag": "kalani-72781c80b376",
-        "server": "82.38.31.62",
-        "server_port": 8080,
-        "method": "chacha20-ietf-poly1305",
-        "password": "oZIoA69Q8yhcQV8ka3Pa3A"
-      },
-      "source": "raw.githubusercontent.comtions/main/output/by-country/v2ray-base64-NL.txt",
-      "exit_ip": "193.29.139.202",
-      "status": "verified",
-      "tested_at": "2026-11-22T19:13:24Z",
-      "metrics": {
-        "download_mbps": 6.316,
-        "upload_mbps": 2.187,
-        "download_bytes_each_round": 1048576,
-        "upload_bytes": 262144,
-        "ttfb_ms": 473.0,
-        "download_rounds_passed": 2,
-        "score": 46.65
-      }
-    },
-    {
-      "id": "bef3799e493c9fc66292",
-      "country": "NL",
-      "protocol": "shadowsocks",
-      "server": "82.38.31.187",
-      "server_port": 8080,
-      "uri": "ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTprMWRCT21PQjRvcWk3VW1wMzdhMWJR@82.38.31.187:8080#shadowsocks-1827146674",
-      "outbound": {
-        "type": "shadowsocks",
-        "tag": "kalani-bef3799e493c",
-        "server": "82.38.31.187",
-        "server_port": 8080,
-        "method": "chacha20-ietf-poly1305",
-        "password": "k1dBOmOB4oqi7Ump37a1bQ"
-      },
-      "source": "raw.githubusercontent.comtions/main/output/by-country/v2ray-base64-NL.txt",
-      "exit_ip": "193.29.139.152",
-      "status": "verified",
-      "tested_at": "2026-11-22T19:14:10Z",
-      "metrics": {
-        "download_mbps": 6.1,
-        "upload_mbps": 2.086,
-        "download_bytes_each_round": 1048576,
-        "upload_bytes": 262144,
-        "ttfb_ms": 556.0,
-        "download_rounds_passed": 2,
-        "score": 45.26
+        "score": 52.33
       }
     },
     {
@@ -353,142 +269,192 @@
         "method": "chacha20-ietf-poly1305",
         "password": "k1dBOmOB4oqi7Ump37a1bQ"
       },
-      "source": "raw.githubusercontent.comtions/main/output/by-country/v2ray-base64-NL.txt",
+      "source": "previous-pool",
       "exit_ip": "193.29.139.152",
       "status": "verified",
-      "tested_at": "2026-11-22T19:13:18Z",
+      "tested_at": "2026-11-22T23:51:41Z",
       "metrics": {
-        "download_mbps": 6.278,
-        "upload_mbps": 1.759,
+        "download_mbps": 7.571,
+        "upload_mbps": 2.567,
         "download_bytes_each_round": 1048576,
         "upload_bytes": 262144,
-        "ttfb_ms": 527.1,
+        "ttfb_ms": 383.8,
         "download_rounds_passed": 2,
-        "score": 44.97
+        "score": 52.51
       }
     },
     {
-      "id": "29d6216138558727ffa4",
+      "id": "72781c80b37666b080fc",
       "country": "NL",
-      "protocol": "vless",
-      "server": "86.54.28.75",
-      "server_port": 443,
-      "uri": "vless://44ae52b9-76fc-444d-8e43-186b4384b80a@86.54.28.75:443?flow=xtls-rprx-vision&pbk=PryGoq51ilG0eLUPl9i0xCvmk1xpwkyFSr_tG4GNLlU&security=reality&sid=1d86d17709852910&sni=www.apple.com&type=raw#vless-1833312532",
+      "protocol": "shadowsocks",
+      "server": "82.38.31.62",
+      "server_port": 8080,
+      "uri": "ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTpvWklvQTY5UTh5aGNRVjhrYTNQYTNB@82.38.31.62:8080#shadowsocks-1827146475",
       "outbound": {
-        "type": "vless",
-        "tag": "kalani-29d621613855",
-        "server": "86.54.28.75",
+        "type": "shadowsocks",
+        "tag": "kalani-72781c80b376",
+        "server": "82.38.31.62",
+        "server_port": 8080,
+        "method": "chacha20-ietf-poly1305",
+        "password": "oZIoA69Q8yhcQV8ka3Pa3A"
+      },
+      "source": "previous-pool",
+      "exit_ip": "193.29.139.202",
+      "status": "verified",
+      "tested_at": "2026-11-22T23:51:37Z",
+      "metrics": {
+        "download_mbps": 7.538,
+        "upload_mbps": 2.439,
+        "download_bytes_each_round": 1048576,
+        "upload_bytes": 262144,
+        "ttfb_ms": 391.2,
+        "download_rounds_passed": 2,
+        "score": 51.97
+      }
+    },
+    {
+      "id": "68b821d7a3b78e4c9b8d",
+      "country": "NL",
+      "protocol": "shadowsocks",
+      "server": "82.38.31.48",
+      "server_port": 8080,
+      "uri": "ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTpvWklvQTY5UTh5aGNRVjhrYTNQYTNB@82.38.31.48:8080#shadowsocks-1827146514",
+      "outbound": {
+        "type": "shadowsocks",
+        "tag": "kalani-68b821d7a3b7",
+        "server": "82.38.31.48",
+        "server_port": 8080,
+        "method": "chacha20-ietf-poly1305",
+        "password": "oZIoA69Q8yhcQV8ka3Pa3A"
+      },
+      "source": "previous-pool",
+      "exit_ip": "193.29.139.219",
+      "status": "verified",
+      "tested_at": "2026-11-22T23:51:35Z",
+      "metrics": {
+        "download_mbps": 7.342,
+        "upload_mbps": 2.63,
+        "download_bytes_each_round": 1048576,
+        "upload_bytes": 262144,
+        "ttfb_ms": 405.8,
+        "download_rounds_passed": 2,
+        "score": 51.83
+      }
+    },
+    {
+      "id": "bef3799e493c9fc66292",
+      "country": "NL",
+      "protocol": "shadowsocks",
+      "server": "82.38.31.187",
+      "server_port": 8080,
+      "uri": "ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTprMWRCT21PQjRvcWk3VW1wMzdhMWJR@82.38.31.187:8080#shadowsocks-1827146674",
+      "outbound": {
+        "type": "shadowsocks",
+        "tag": "kalani-bef3799e493c",
+        "server": "82.38.31.187",
+        "server_port": 8080,
+        "method": "chacha20-ietf-poly1305",
+        "password": "k1dBOmOB4oqi7Ump37a1bQ"
+      },
+      "source": "previous-pool",
+      "exit_ip": "193.29.139.152",
+      "status": "verified",
+      "tested_at": "2026-11-22T23:51:40Z",
+      "metrics": {
+        "download_mbps": 7.372,
+        "upload_mbps": 2.508,
+        "download_bytes_each_round": 1048576,
+        "upload_bytes": 262144,
+        "ttfb_ms": 409.6,
+        "download_rounds_passed": 2,
+        "score": 51.54
+      }
+    },
+    {
+      "id": "eb7aaa0a5906a4c42152",
+      "country": "NL",
+      "protocol": "shadowsocks",
+      "server": "158.173.20.208",
+      "server_port": 443,
+      "uri": "ss://YWVzLTEyOC1nY206c2hhZG93c29ja3M@158.173.20.208:443#shadowsocks-1827146478",
+      "outbound": {
+        "type": "shadowsocks",
+        "tag": "kalani-eb7aaa0a5906",
+        "server": "158.173.20.208",
         "server_port": 443,
-        "uuid": "44ae52b9-76fc-444d-8e43-186b4384b80a",
-        "flow": "xtls-rprx-vision",
-        "tls": {
-          "enabled": true,
-          "server_name": "www.apple.com",
-          "utls": {
-            "enabled": true,
-            "fingerprint": "randomized"
-          },
-          "reality": {
-            "enabled": true,
-            "public_key": "PryGoq51ilG0eLUPl9i0xCvmk1xpwkyFSr_tG4GNLlU",
-            "short_id": "1d86d17709852910"
-          }
-        },
-        "packet_encoding": "xudp"
+        "method": "aes-128-gcm",
+        "password": "shadowsocks"
       },
       "source": "raw.githubusercontent.comtions/main/output/by-country/v2ray-base64-NL.txt",
-      "exit_ip": "86.54.28.75",
+      "exit_ip": "158.173.20.208",
       "status": "verified",
-      "tested_at": "2026-11-22T19:14:12Z",
+      "tested_at": "2026-11-22T23:52:10Z",
       "metrics": {
-        "download_mbps": 6.157,
-        "upload_mbps": 1.977,
+        "download_mbps": 7.455,
+        "upload_mbps": 2.339,
         "download_bytes_each_round": 1048576,
         "upload_bytes": 262144,
-        "ttfb_ms": 633.8,
+        "ttfb_ms": 397.1,
         "download_rounds_passed": 2,
-        "score": 44.81
+        "score": 51.35
       }
     },
     {
-      "id": "777e6d4fc29c2a89192d",
-      "country": "FR",
-      "protocol": "vless",
-      "server": "152.228.139.33",
-      "server_port": 51671,
-      "uri": "vless://75cc7568-abb0-46a8-88be-8137d3c647d4@152.228.139.33:51671?fp=chrome&pbk=-5PowNUY37Pi01YKO9fjRTrum1m_9n6XauaPDpmOJzU&security=reality&serviceName=grpc_common3&sid=2fed44d8c59f7e71&sni=www.sony.com&type=grpc#vless-1827152847",
+      "id": "2c41afc2ddb132ff4085",
+      "country": "GB",
+      "protocol": "shadowsocks",
+      "server": "141.98.101.181",
+      "server_port": 443,
+      "uri": "ss://YWVzLTEyOC1nY206c2hhZG93c29ja3M@141.98.101.181:443#shadowsocks-1827146143",
       "outbound": {
-        "type": "vless",
-        "tag": "kalani-777e6d4fc29c",
-        "server": "152.228.139.33",
-        "server_port": 51671,
-        "uuid": "75cc7568-abb0-46a8-88be-8137d3c647d4",
-        "tls": {
-          "enabled": true,
-          "server_name": "www.sony.com",
-          "utls": {
-            "enabled": true,
-            "fingerprint": "chrome"
-          },
-          "reality": {
-            "enabled": true,
-            "public_key": "-5PowNUY37Pi01YKO9fjRTrum1m_9n6XauaPDpmOJzU",
-            "short_id": "2fed44d8c59f7e71"
-          }
-        },
-        "transport": {
-          "type": "grpc",
-          "service_name": "grpc_common3",
-          "idle_timeout": "15s",
-          "ping_timeout": "15s"
-        },
-        "packet_encoding": "xudp"
+        "type": "shadowsocks",
+        "tag": "kalani-2c41afc2ddb1",
+        "server": "141.98.101.181",
+        "server_port": 443,
+        "method": "aes-128-gcm",
+        "password": "shadowsocks"
       },
-      "source": "raw.githubusercontent.comtions/main/output/by-country/v2ray-base64-FR.txt",
-      "exit_ip": "152.228.139.33",
+      "source": "raw.githubusercontent.comtions/main/output/by-country/v2ray-base64-GB.txt",
+      "exit_ip": "141.98.101.181",
       "status": "verified",
-      "tested_at": "2026-11-22T19:13:44Z",
+      "tested_at": "2026-11-22T23:52:15Z",
       "metrics": {
-        "download_mbps": 13.503,
-        "upload_mbps": 2.672,
+        "download_mbps": 8.197,
+        "upload_mbps": 2.66,
         "download_bytes_each_round": 1048576,
         "upload_bytes": 262144,
-        "ttfb_ms": 326.9,
+        "ttfb_ms": 386.8,
         "download_rounds_passed": 2,
-        "score": 73.46
+        "score": 54.94
       }
     },
     {
-      "id": "1484433f15c2a93b86d8",
-      "country": "FR",
-      "protocol": "hysteria2",
-      "server": "62.210.7.139",
-      "server_port": 60111,
-      "uri": "hy2://github.com%2FAlvin9999-newpac%2Ffanqiang@62.210.7.139:60111?insecure=1&sni=www.bing.com#hysteria2-1853487453",
+      "id": "aa9cbdbd56affa655e30",
+      "country": "GB",
+      "protocol": "shadowsocks",
+      "server": "98.98.142.161",
+      "server_port": 8080,
+      "uri": "ss://cmM0LW1kNToxNGZGUHJiZXpFM0hEWnpzTU9yNg@98.98.142.161:8080#shadowsocks-1870576128",
       "outbound": {
-        "type": "hysteria2",
-        "tag": "kalani-1484433f15c2",
-        "server": "62.210.7.139",
-        "server_port": 60111,
-        "password": "github.com/Alvin9999-newpac/fanqiang",
-        "tls": {
-          "enabled": true,
-          "server_name": "www.bing.com",
-          "insecure": true
-        }
+        "type": "shadowsocks",
+        "tag": "kalani-aa9cbdbd56af",
+        "server": "98.98.142.161",
+        "server_port": 8080,
+        "method": "rc4-md5",
+        "password": "14fFPrbezE3HDZzsMOr6"
       },
-      "source": "raw.githubusercontent.comtions/main/output/by-country/v2ray-base64-FR.txt",
-      "exit_ip": "62.210.124.146",
+      "source": "raw.githubusercontent.comtions/main/output/by-country/v2ray-base64-GB.txt",
+      "exit_ip": "98.98.142.161",
       "status": "verified",
-      "tested_at": "2026-11-22T19:13:42Z",
+      "tested_at": "2026-11-22T23:52:17Z",
       "metrics": {
-        "download_mbps": 12.71,
-        "upload_mbps": 3.155,
+        "download_mbps": 6.434,
+        "upload_mbps": 2.099,
         "download_bytes_each_round": 1048576,
         "upload_bytes": 262144,
-        "ttfb_ms": 330.4,
+        "ttfb_ms": 567.9,
         "download_rounds_passed": 2,
-        "score": 72.23
+        "score": 46.41
       }
     },
     {
@@ -525,18 +491,99 @@
         },
         "packet_encoding": "xudp"
       },
-      "source": "raw.githubusercontent.comtions/main/output/by-country/v2ray-base64-FR.txt",
+      "source": "previous-pool",
       "exit_ip": "152.228.139.33",
       "status": "verified",
-      "tested_at": "2026-11-22T19:13:50Z",
+      "tested_at": "2026-11-22T23:51:45Z",
       "metrics": {
-        "download_mbps": 12.543,
-        "upload_mbps": 2.895,
+        "download_mbps": 14.761,
+        "upload_mbps": 3.275,
         "download_bytes_each_round": 1048576,
         "upload_bytes": 262144,
-        "ttfb_ms": 322.8,
+        "ttfb_ms": 291.1,
         "download_rounds_passed": 2,
-        "score": 70.87
+        "score": 79.81
+      }
+    },
+    {
+      "id": "1484433f15c2a93b86d8",
+      "country": "FR",
+      "protocol": "hysteria2",
+      "server": "62.210.7.139",
+      "server_port": 60111,
+      "uri": "hy2://github.com%2FAlvin9999-newpac%2Ffanqiang@62.210.7.139:60111?insecure=1&sni=www.bing.com#hysteria2-1853487453",
+      "outbound": {
+        "type": "hysteria2",
+        "tag": "kalani-1484433f15c2",
+        "server": "62.210.7.139",
+        "server_port": 60111,
+        "password": "github.com/Alvin9999-newpac/fanqiang",
+        "tls": {
+          "enabled": true,
+          "server_name": "www.bing.com",
+          "insecure": true
+        }
+      },
+      "source": "previous-pool",
+      "exit_ip": "62.210.124.146",
+      "status": "verified",
+      "tested_at": "2026-11-22T23:51:44Z",
+      "metrics": {
+        "download_mbps": 14.33,
+        "upload_mbps": 3.407,
+        "download_bytes_each_round": 1048576,
+        "upload_bytes": 262144,
+        "ttfb_ms": 293.0,
+        "download_rounds_passed": 2,
+        "score": 78.73
+      }
+    },
+    {
+      "id": "777e6d4fc29c2a89192d",
+      "country": "FR",
+      "protocol": "vless",
+      "server": "152.228.139.33",
+      "server_port": 51671,
+      "uri": "vless://75cc7568-abb0-46a8-88be-8137d3c647d4@152.228.139.33:51671?fp=chrome&pbk=-5PowNUY37Pi01YKO9fjRTrum1m_9n6XauaPDpmOJzU&security=reality&serviceName=grpc_common3&sid=2fed44d8c59f7e71&sni=www.sony.com&type=grpc#vless-1827152847",
+      "outbound": {
+        "type": "vless",
+        "tag": "kalani-777e6d4fc29c",
+        "server": "152.228.139.33",
+        "server_port": 51671,
+        "uuid": "75cc7568-abb0-46a8-88be-8137d3c647d4",
+        "tls": {
+          "enabled": true,
+          "server_name": "www.sony.com",
+          "utls": {
+            "enabled": true,
+            "fingerprint": "chrome"
+          },
+          "reality": {
+            "enabled": true,
+            "public_key": "-5PowNUY37Pi01YKO9fjRTrum1m_9n6XauaPDpmOJzU",
+            "short_id": "2fed44d8c59f7e71"
+          }
+        },
+        "transport": {
+          "type": "grpc",
+          "service_name": "grpc_common3",
+          "idle_timeout": "15s",
+          "ping_timeout": "15s"
+        },
+        "packet_encoding": "xudp"
+      },
+      "source": "previous-pool",
+      "exit_ip": "152.228.139.33",
+      "status": "verified",
+      "tested_at": "2026-11-22T23:51:41Z",
+      "metrics": {
+        "download_mbps": 13.893,
+        "upload_mbps": 3.23,
+        "download_bytes_each_round": 1048576,
+        "upload_bytes": 262144,
+        "ttfb_ms": 305.3,
+        "download_rounds_passed": 2,
+        "score": 76.63
       }
     },
     {
@@ -554,18 +601,18 @@
         "method": "aes-256-gcm",
         "password": "ZRpgaBeGxtENIXgvhpkZBKz9GnWRS2dYcx9O+a2iwN4="
       },
-      "source": "raw.githubusercontent.comheusadam/v2ray-config/main/subs/bundles/best.txt",
+      "source": "previous-pool",
       "exit_ip": "2001:41d0:250:b700::",
       "status": "verified",
-      "tested_at": "2026-11-22T19:13:53Z",
+      "tested_at": "2026-11-22T23:51:46Z",
       "metrics": {
-        "download_mbps": 5.8,
-        "upload_mbps": 2.212,
+        "download_mbps": 7.953,
+        "upload_mbps": 2.467,
         "download_bytes_each_round": 1048576,
         "upload_bytes": 262144,
-        "ttfb_ms": 667.0,
+        "ttfb_ms": 382.4,
         "download_rounds_passed": 2,
-        "score": 44.18
+        "score": 53.52
       }
     }
   ]
