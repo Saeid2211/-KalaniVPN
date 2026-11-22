@@ -1,0 +1,85 @@
+name: Kalani server pool
+
+on:
+  schedule:
+    - cron: '17,47 * * * *'
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/server-pool.yml'
+      - 'server-pool/collect.py'
+      - 'server-pool/sources.txt'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: kalani-server-pool
+  cancel-in-progress: false
+
+jobs:
+  collect-and-verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 1
+
+      - name: Install pinned sing-box 1.14.4
+        shell: bash
+        run: |
+          set -euo pipefail
+          URL='https://github.com/SagerNet/sing-box/releases/download/v1.14.4/sing-box-1.14.4-linux-amd64-glibc.tar.gz'
+          SHA='231e57c18378f780a08de832844a1ca9716e17a7bcf82964b350844d243c03ac'
+          curl -fsSL "$URL" -o /tmp/sing-box.tar.gz
+          printf '%s  %s\n' "$SHA" /tmp/sing-box.tar.gz | sha256sum -c -
+          mkdir -p /tmp/sing-box-extract
+          tar -xzf /tmp/sing-box.tar.gz -C /tmp/sing-box-extract
+          BIN="$(find /tmp/sing-box-extract -type f -name sing-box -print -quit)"
+          test -n "$BIN"
+          sudo install -m 0755 "$BIN" /usr/local/bin/sing-box
+          sing-box version
+
+      - name: Install pinned unbox URI converter
+        shell: bash
+        run: |
+          set -euo pipefail
+          URL='https://github.com/aceberg/unbox/releases/download/v1.1.2/unbox_1.1.2_linux_amd64.tar.gz'
+          SHA='b4f24278dcf28913aaa09774746fc66a37f99cf90205e0b46193258b53c3a017'
+          curl -fsSL "$URL" -o /tmp/unbox.tar.gz
+          printf '%s  %s\n' "$SHA" /tmp/unbox.tar.gz | sha256sum -c -
+          mkdir -p /tmp/unbox-extract
+          tar -xzf /tmp/unbox.tar.gz -C /tmp/unbox-extract
+          BIN="$(find /tmp/unbox-extract -type f -name unbox -print -quit)"
+          test -n "$BIN"
+          sudo install -m 0755 "$BIN" /usr/local/bin/unbox
+          unbox examples >/dev/null
+
+      - name: Collect and test public candidates
+        env:
+          MAX_CANDIDATES: '120'
+          MAX_WORKERS: '4'
+          SING_BOX_BIN: sing-box
+          UNBOX_BIN: unbox
+        run: python3 server-pool/collect.py
+
+      - name: Publish verified pool
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -s server-pool/server-pool.json ]; then
+            echo 'No verified pool was produced. Existing published data remains untouched.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add server-pool/server-pool.json
+          if git diff --cached --quiet; then
+            echo 'Pool did not change; no commit is needed.'
+            exit 0
+          fi
+          git commit -m 'Update verified Kalani server pool'
+          git push

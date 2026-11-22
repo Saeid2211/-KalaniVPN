@@ -1,0 +1,14 @@
+# Candidate feeds only. Nothing here is trusted until it passes sing-box 1.14.4 testing.
+# Format: HTTPS_URL|COUNTRY_HINT
+# COUNTRY_HINT only affects sampling. The real exit country is checked through the proxy.
+
+# Active general candidate feed (re-verified independently by Kalani's worker)
+https://raw.githubusercontent.com/morpheusadam/v2ray-config/main/subs/bundles/best.txt
+https://raw.githubusercontent.com/chaishpish/free_server_v2ray/main/@TFMTProto
+
+# Country-sharded reserve feeds; these may be older and are never trusted by label alone.
+https://raw.githubusercontent.com/Au1rxx/free-vpn-subscriptions/main/output/by-country/v2ray-base64-US.txt|US
+https://raw.githubusercontent.com/Au1rxx/free-vpn-subscriptions/main/output/by-country/v2ray-base64-DE.txt|DE
+https://raw.githubusercontent.com/Au1rxx/free-vpn-subscriptions/main/output/by-country/v2ray-base64-NL.txt|NL
+https://raw.githubusercontent.com/Au1rxx/free-vpn-subscriptions/main/output/by-country/v2ray-base64-GB.txt|GB
+https://raw.githubusercontent.com/Au1rxx/free-vpn-subscriptions/main/output/by-country/v2ray-base64-FR.txt|FR
