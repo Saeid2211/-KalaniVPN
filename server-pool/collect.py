@@ -35,8 +35,8 @@ OUTPUT_FILE = ROOT / "server-pool.json"
 SING_BOX = os.environ.get("SING_BOX_BIN", "sing-box")
 UNBOX = os.environ.get("UNBOX_BIN", "unbox")
 ALLOWED_COUNTRIES = ("US", "DE", "NL", "GB", "FR")
-SUPPORTED_SCHEMES = {"vless", "vmess", "trojan", "ss", "hysteria2", "hy2", "tuic", "anytls"}
-SUPPORTED_OUTBOUNDS = {"vless", "vmess", "trojan", "shadowsocks", "hysteria2", "tuic", "anytls"}
+SUPPORTED_SCHEMES = {"vless", "vmess", "trojan", "ss", "hysteria2", "hy2", "tuic"}
+SUPPORTED_OUTBOUNDS = {"vless", "vmess", "trojan", "shadowsocks", "hysteria2", "tuic"}
 MAX_CANDIDATES = int(os.environ.get("MAX_CANDIDATES", "120"))
 MAX_WORKERS = int(os.environ.get("MAX_WORKERS", "4"))
 MAX_PER_COUNTRY = 5
@@ -231,6 +231,150 @@ def make_template(path: Path) -> None:
     )
 
 
+
+SECURE_SHADOWSOCKS_METHODS = {
+    "2022-blake3-aes-128-gcm",
+    "2022-blake3-aes-256-gcm",
+    "2022-blake3-chacha20-poly1305",
+    "aes-128-gcm",
+    "aes-192-gcm",
+    "aes-256-gcm",
+    "chacha20-ietf-poly1305",
+    "xchacha20-ietf-poly1305",
+}
+
+SECURE_VMESS_METHODS = {
+    "auto",
+    "aes-128-gcm",
+    "chacha20-poly1305",
+}
+
+FORBIDDEN_INSECURE_KEYS = {
+    "insecure",
+    "allow_insecure",
+    "skip_cert_verify",
+    "skip_verify",
+    "skip_certificate_verification",
+}
+
+
+def _security_flag_enabled(value: Any) -> bool:
+    if value is True:
+        return True
+    if isinstance(value, int) and not isinstance(value, bool):
+        return value == 1
+    if isinstance(value, str):
+        return value.strip().lower() in {"true", "1", "yes"}
+    return False
+
+
+def _contains_insecure_setting(value: Any) -> bool:
+    if isinstance(value, dict):
+        for key, child in value.items():
+            normalized = str(key).strip().lower().replace("-", "_")
+            if (normalized in FORBIDDEN_INSECURE_KEYS
+                    and _security_flag_enabled(child)):
+                return True
+            if _contains_insecure_setting(child):
+                return True
+
+    elif isinstance(value, list):
+        return any(_contains_insecure_setting(item) for item in value)
+
+    return False
+
+
+def validate_outbound_security(outbound: dict[str, Any]) -> bool:
+    """Fail closed on unsupported protocols and weak or insecure encryption."""
+    if not isinstance(outbound, dict):
+        return False
+
+    protocol = str(outbound.get("type", "")).strip().lower()
+    if protocol not in SUPPORTED_OUTBOUNDS:
+        return False
+
+    if _contains_insecure_setting(outbound):
+        return False
+
+    tls = outbound.get("tls")
+    if tls is not None and not isinstance(tls, dict):
+        return False
+
+    tls_enabled = isinstance(tls, dict) and tls.get("enabled") is True
+
+    # These protocols must use authenticated TLS.
+    if protocol in {"vless", "trojan", "hysteria2", "tuic"}:
+        if not tls_enabled:
+            return False
+
+    if tls_enabled:
+        versions = {"1.2": 12, "1.3": 13}
+
+        min_version = str(tls.get("min_version", "")).strip()
+        max_version = str(tls.get("max_version", "")).strip()
+
+        if min_version and min_version not in versions:
+            return False
+        if max_version and max_version not in versions:
+            return False
+
+        effective_min = versions.get(min_version, 12)
+        effective_max = versions.get(max_version, 13)
+
+        if effective_min > effective_max:
+            return False
+
+        secure_tls12_suites = {
+            "TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256",
+            "TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384",
+            "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256",
+            "TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384",
+            "TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256",
+            "TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256",
+        }
+
+        cipher_suites = tls.get("cipher_suites", [])
+        if not isinstance(cipher_suites, list):
+            return False
+
+        if any(
+            not isinstance(item, str)
+            or item.upper() not in secure_tls12_suites
+            for item in cipher_suites
+        ):
+            return False
+
+        reality = tls.get("reality")
+        if reality is not None:
+            if not isinstance(reality, dict):
+                return False
+            if reality.get("enabled") is True:
+                public_key = str(reality.get("public_key", "")).strip()
+                if not public_key:
+                    return False
+
+    if protocol == "shadowsocks":
+        method = str(outbound.get("method", "")).strip().lower()
+        if method not in SECURE_SHADOWSOCKS_METHODS:
+            return False
+
+    if protocol == "vmess":
+        security = str(outbound.get("security", "auto")).strip().lower()
+        if security not in SECURE_VMESS_METHODS:
+            return False
+
+        try:
+            alter_id = int(outbound.get("alter_id", 0))
+        except (TypeError, ValueError):
+            return False
+
+        # VMess alter_id > 0 selects the legacy protocol.
+        if alter_id != 0:
+            return False
+
+    return True
+
+
 def convert_one(uri: str, temp_dir: Path) -> dict[str, Any] | None:
     input_path = temp_dir / "one-uri.txt"
     template_path = temp_dir / "template.json"
@@ -253,6 +397,9 @@ def convert_one(uri: str, temp_dir: Path) -> dict[str, Any] | None:
         if len(candidates) != 1:
             return None
         outbound = candidates[0]
+        if not validate_outbound_security(outbound):
+            print(f"REJECT stage=security-policy", flush=True)
+            return None
         if outbound.get("detour"):
             return None
         if (outbound.get("transport") or {}).get("type", "").lower() == "xhttp":
