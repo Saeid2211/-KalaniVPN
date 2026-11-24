@@ -10,6 +10,9 @@ on:
       - '.github/workflows/server-pool.yml'
       - 'server-pool/collect.py'
       - 'server-pool/sources.txt'
+      - 'server-pool/geoip_ipinfo.py'
+      - 'server-pool/test_geo_quorum.py'
+      - 'server-pool/apply_geoip_phase4.py'
 
 permissions:
   contents: write
@@ -28,6 +31,25 @@ jobs:
         with:
           fetch-depth: 1
 
+      - name: Verify IPinfo Lite secret is configured
+        env:
+          IPINFO_TOKEN: ${{ secrets.IPINFO_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "$IPINFO_TOKEN" ]; then
+            echo "::error::Repository Actions secret IPINFO_TOKEN is missing. Add it in Settings > Secrets and variables > Actions."
+            exit 1
+          fi
+          echo "IPINFO_TOKEN secret is present. Its value will not be printed."
+
+      - name: Apply GeoIP Phase 4 adapter to collector
+        run: python3 server-pool/apply_geoip_phase4.py
+
+      - name: Test GeoIP quorum logic
+        working-directory: server-pool
+        run: python3 -m unittest -v test_geo_quorum.py
+
       - name: Install pinned sing-box 1.14.4
         shell: bash
         run: |
@@ -35,7 +57,7 @@ jobs:
           URL='https://github.com/SagerNet/sing-box/releases/download/v1.14.4/sing-box-1.14.4-linux-amd64-glibc.tar.gz'
           SHA='231e57c18378f780a08de832844a1ca9716e17a7bcf82964b350844d243c03ac'
           curl -fsSL "$URL" -o /tmp/sing-box.tar.gz
-          printf '%s  %s\n' "$SHA" /tmp/sing-box.tar.gz | sha256sum -c -
+          printf '%s %s\n' "$SHA" /tmp/sing-box.tar.gz | sha256sum -c -
           mkdir -p /tmp/sing-box-extract
           tar -xzf /tmp/sing-box.tar.gz -C /tmp/sing-box-extract
           BIN="$(find /tmp/sing-box-extract -type f -name sing-box -print -quit)"
@@ -50,7 +72,7 @@ jobs:
           URL='https://github.com/aceberg/unbox/releases/download/v1.1.2/unbox_1.1.2_linux_amd64.tar.gz'
           SHA='b4f24278dcf28913aaa09774746fc66a37f99cf90205e0b46193258b53c3a017'
           curl -fsSL "$URL" -o /tmp/unbox.tar.gz
-          printf '%s  %s\n' "$SHA" /tmp/unbox.tar.gz | sha256sum -c -
+          printf '%s %s\n' "$SHA" /tmp/unbox.tar.gz | sha256sum -c -
           mkdir -p /tmp/unbox-extract
           tar -xzf /tmp/unbox.tar.gz -C /tmp/unbox-extract
           BIN="$(find /tmp/unbox-extract -type f -name unbox -print -quit)"
@@ -64,6 +86,7 @@ jobs:
           MAX_WORKERS: '4'
           SING_BOX_BIN: sing-box
           UNBOX_BIN: unbox
+          IPINFO_TOKEN: ${{ secrets.IPINFO_TOKEN }}
         run: python3 server-pool/collect.py
 
       - name: Publish verified pool
