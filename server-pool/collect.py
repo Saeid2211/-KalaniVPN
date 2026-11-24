@@ -59,7 +59,13 @@ MIN_DOWNLOAD_BPS = 65_536       # 512 kbit/s sustained floor
 MIN_UPLOAD_BPS = 16_384         # 128 kbit/s sustained floor
 DOWNLOAD_URL = "https://speed.cloudflare.com/__down?bytes=1048576"
 UPLOAD_URL = "https://speed.cloudflare.com/__up"
-GEO_URLS = ("https://www.cloudflare.com/cdn-cgi/trace", "https://get.geojs.io/v1/ip/geo.json")
+# The third independent provider is queried only when the first two fail or disagree.
+# This preserves the fast path while allowing a 2-of-3 country consensus.
+GEO_URLS = (
+    "https://www.cloudflare.com/cdn-cgi/trace",
+    "https://get.geojs.io/v1/ip/geo.json",
+    "https://ipapi.co/json/",
+)
 USER_AGENT = "KalaniVPN3-ServerPool/1.0"
 
 COUNTRY_NAMES = {
@@ -571,10 +577,8 @@ def curl_to_file(proxy: str, url: str, destination: Path, timeout: int = 7) -> t
 
         raw_status = done.stdout.strip()
         status = int(raw_status[-3:]) if raw_status else 0
-
         if status != 200:
             print(f"GEO_HTTP_FAIL provider={provider} status={status}", flush=True)
-
         return status, done.stdout
 
     except subprocess.TimeoutExpired:
@@ -586,60 +590,72 @@ def curl_to_file(proxy: str, url: str, destination: Path, timeout: int = 7) -> t
         return None
 
 
-def verify_exit_country(proxy: str, temp_dir: Path) -> tuple[str | None, str | None, str | None]:
-    observations: list[tuple[str, str | None, str]] = []
-    provider_failures = 0
+def _query_geo_provider(proxy: str, url: str, output: Path) -> tuple[str, str | None, str] | None:
+    """Fetch one country observation through the candidate proxy, without secrets in logs."""
+    provider = urllib.parse.urlsplit(url).netloc
+    result = curl_to_file(proxy, url, output, timeout=7)
+    if not result or result[0] != 200:
+        return None
 
-    for index, url in enumerate(GEO_URLS):
-        provider = urllib.parse.urlsplit(url).netloc
-        output = temp_dir / f"geo-{index}.json"
-
-        result = curl_to_file(proxy, url, output, timeout=7)
-
-        if not result or result[0] != 200:
-            provider_failures += 1
-            continue
-
+    try:
+        raw = output.read_text(encoding="utf-8")
         try:
-            raw = output.read_text(encoding="utf-8")
-            try:
-                payload = json.loads(raw)
-            except json.JSONDecodeError:
-                # Cloudflare Trace uses key=value plain text.
-                payload = raw
-        except Exception as exc:
-            print(
-                f"GEO_INVALID_RESPONSE provider={provider} type={type(exc).__name__}",
-                flush=True,
-            )
-            provider_failures += 1
-            continue
+            payload = json.loads(raw)
+        except json.JSONDecodeError:
+            # Cloudflare Trace uses key=value plain text.
+            payload = raw
+    except Exception as exc:
+        print(f"GEO_INVALID_RESPONSE provider={provider} type={type(exc).__name__}", flush=True)
+        return None
 
-        code, ip = parse_country(payload)
-        if not code:
-            print(f"GEO_COUNTRY_MISSING provider={provider}", flush=True)
-            provider_failures += 1
-            continue
+    code, ip = parse_country(payload)
+    if not code:
+        print(f"GEO_COUNTRY_MISSING provider={provider}", flush=True)
+        return None
+    return code, ip, provider
 
-        observations.append((code, ip, provider))
 
-    # Fail closed: both independent providers must return valid country data.
-    if provider_failures or len(observations) != len(GEO_URLS):
+def verify_exit_country(proxy: str, temp_dir: Path) -> tuple[str | None, str | None, str | None]:
+    """Require two independent GeoIP providers to agree; use provider three only as fallback."""
+    observations: list[tuple[str, str | None, str]] = []
+
+    # Fast path: the original two providers still decide immediately when they agree.
+    for index, url in enumerate(GEO_URLS[:2]):
+        observation = _query_geo_provider(proxy, url, temp_dir / f"geo-{index}.json")
+        if observation:
+            observations.append(observation)
+
+    if len(observations) == 2 and observations[0][0] == observations[1][0]:
+        country = observations[0][0]
         exit_ip = next((item[1] for item in observations if item[1]), None)
-        return None, exit_ip, "geolocation-provider-failed"
+        print(f"GEO_COUNTRY_QUORUM country={country} providers=2/2", flush=True)
+        return country, exit_ip, None
 
-    countries = {item[0] for item in observations}
-    if len(countries) != 1:
-        providers = ",".join(item[2] for item in observations)
-        codes = ",".join(item[0] for item in observations)
+    # If either provider failed or the first two disagree, ask an independent third.
+    fallback_url = GEO_URLS[2]
+    fallback = _query_geo_provider(proxy, fallback_url, temp_dir / "geo-2.json")
+    if fallback:
+        observations.append(fallback)
+
+    counts: dict[str, int] = defaultdict(int)
+    for code, _ip, _provider in observations:
+        counts[code] += 1
+
+    agreements = [code for code, count in counts.items() if count >= 2]
+    providers = ",".join(item[2] for item in observations)
+    codes = ",".join(item[0] for item in observations)
+
+    if len(agreements) != 1:
         print(
-            f"GEO_COUNTRY_DISAGREEMENT providers={providers} codes={codes}",
+            f"GEO_COUNTRY_NO_QUORUM providers={providers or 'none'} codes={codes or 'none'}",
             flush=True,
         )
-        return None, observations[0][1], "geolocation-disagreement"
+        exit_ip = next((item[1] for item in observations if item[1]), None)
+        return None, exit_ip, "geolocation-no-quorum"
 
-    country = observations[0][0]
-    exit_ip = next((item[1] for item in observations if item[1]), None)
+    country = agreements[0]
+    exit_ip = next((item[1] for item in observations if item[0] == country and item[1]), None)
+    print(f"GEO_COUNTRY_QUORUM country={country} agreeing=2/3 providers={providers}", flush=True)
     return country, exit_ip, None
 
 
@@ -921,7 +937,7 @@ def main() -> int:
         "engine": {"name": "sing-box", "version": "1.14.4"},
         "validation": {
             "probe_runtime": "GitHub-hosted ubuntu-24.04",
-            "country_rule": "Two independent GeoIP providers must agree on the proxy exit country",
+            "country_rule": "At least two independent GeoIP providers must agree; a third provider is queried only if the first two fail or disagree",
             "transfer_test": "2 x 1 MiB HTTPS download and 1 x 256 KiB HTTPS upload through SOCKS5",
             "download_minimum_mbps": round(MIN_DOWNLOAD_BPS * 8 / 1_000_000, 3),
             "upload_minimum_mbps": round(MIN_UPLOAD_BPS * 8 / 1_000_000, 3),
