@@ -1,10 +1,5 @@
 #!/usr/bin/env python3
-"""Build a small, independently re-tested public server pool for KalaniVPN3.
-
-The candidate feeds are untrusted input. Nothing from a feed is executed.
-Each URI is parsed by the pinned unbox converter, validated by the official
-sing-box 1.14.4 binary, then tested through a local SOCKS inbound.
-"""
+"""Build a small, independently re-tested public server pool for KalaniVPN3. The candidate feeds are untrusted input. Nothing from a feed is executed. Each URI is parsed by the pinned unbox converter, validated by the official sing-box 1.14.4 binary, then tested through a local SOCKS inbound. AnyTLS support is enabled through unbox 1.1.2. The unbox project labels its AnyTLS URL parser experimental, so every candidate still fails closed through sing-box config validation, authenticated TLS policy, GeoIP checks and full transfer tests before it can enter the published pool. """
 from __future__ import annotations
 
 import base64
@@ -35,8 +30,26 @@ OUTPUT_FILE = ROOT / "server-pool.json"
 SING_BOX = os.environ.get("SING_BOX_BIN", "sing-box")
 UNBOX = os.environ.get("UNBOX_BIN", "unbox")
 ALLOWED_COUNTRIES = ("US", "DE", "NL", "GB", "FR")
-SUPPORTED_SCHEMES = {"vless", "vmess", "trojan", "ss", "hysteria2", "hy2", "tuic"}
-SUPPORTED_OUTBOUNDS = {"vless", "vmess", "trojan", "shadowsocks", "hysteria2", "tuic"}
+SUPPORTED_SCHEMES = {
+    "vless", "vmess", "trojan", "ss", "hysteria2", "hy2", "tuic", "anytls"
+}
+SUPPORTED_OUTBOUNDS = {
+    "vless", "vmess", "trojan", "shadowsocks", "hysteria2", "tuic", "anytls"
+}
+
+# Sampling targets only. These are not acceptance guarantees: a protocol is
+# published only if its candidate passes every validation and traffic test.
+# Slots are taken from the random remainder, so MAX_CANDIDATES never increases.
+PROTOCOL_QUOTAS = {
+    "anytls": 2,
+    "hysteria2": 2,
+    "tuic": 2,
+    "trojan": 1,
+    "shadowsocks": 1,
+    "vmess": 1,
+}
+PROTOCOL_ALIASES = {"ss": "shadowsocks", "hy2": "hysteria2"}
+
 MAX_CANDIDATES = int(os.environ.get("MAX_CANDIDATES", "120"))
 MAX_WORKERS = int(os.environ.get("MAX_WORKERS", "4"))
 MAX_PER_COUNTRY = 5
@@ -99,14 +112,15 @@ def fetch_text(url: str) -> str:
     if len(raw) > 12 * 1024 * 1024:
         raise ValueError("Source exceeded 12 MiB safety limit")
     text = raw.decode("utf-8", errors="replace")
-    if re.search(r"(?i)(?:vless|vmess|trojan|ss|hysteria2|hy2|tuic|anytls)://", text):
+    supported_pattern = r"(?i)(?:vless|vmess|trojan|ss|hysteria2|hy2|tuic|anytls)://"
+    if re.search(supported_pattern, text):
         return text
     # Some providers publish a single base64-encoded subscription document.
     compact = re.sub(r"\s+", "", text)
     if compact and re.fullmatch(r"[A-Za-z0-9_+/=-]+", compact):
         try:
             decoded = base64.b64decode(compact + "=" * (-len(compact) % 4)).decode("utf-8", "replace")
-            if re.search(r"(?i)(?:vless|vmess|trojan|ss|hysteria2|hy2|tuic|anytls)://", decoded):
+            if re.search(supported_pattern, decoded):
                 return decoded
         except Exception:
             pass
@@ -135,6 +149,11 @@ def normalize_uri(raw: str) -> str | None:
 
 def fingerprint_uri(uri: str) -> str:
     return hashlib.sha256(uri.encode("utf-8")).hexdigest()
+
+
+def protocol_for_candidate(item: dict[str, str]) -> str:
+    scheme = item["uri"].split("://", 1)[0].lower()
+    return PROTOCOL_ALIASES.get(scheme, scheme)
 
 
 def read_previous() -> list[dict[str, Any]]:
@@ -195,6 +214,8 @@ def collect_candidates(sources: list[tuple[str, str]], previous: list[dict[str, 
     # the node's country. The actual exit country is verified over the proxy.
     selected: list[dict[str, str]] = []
     selected_hashes: set[str] = set()
+
+    # Keep previously published nodes at the front of the sample.
     for node in previous:
         uri = normalize_uri(node.get("uri", ""))
         if uri:
@@ -204,13 +225,47 @@ def collect_candidates(sources: list[tuple[str, str]], previous: list[dict[str, 
                 selected.append(item)
                 selected_hashes.add(key)
 
+    # Retain the original country-hint sampling behaviour.
     for country in ALLOWED_COUNTRIES:
         rows = [item for item in hinted[country] if fingerprint_uri(item["uri"]) not in selected_hashes]
         random.shuffle(rows)
         for item in rows[:10]:
+            key = fingerprint_uri(item["uri"])
+            if key in selected_hashes:
+                continue
             selected.append(item)
-            selected_hashes.add(fingerprint_uri(item["uri"]))
+            selected_hashes.add(key)
 
+    # Reserve a small number of slots for less common protocols. A quota is a
+    # sampling target, not a guarantee; missing protocol candidates are skipped.
+    # This runs before the random remainder, so the total stays <= MAX_CANDIDATES.
+    selected_protocol_counts: dict[str, int] = defaultdict(int)
+    for item in selected:
+        selected_protocol_counts[protocol_for_candidate(item)] += 1
+
+    for protocol, quota in PROTOCOL_QUOTAS.items():
+        missing = max(0, quota - selected_protocol_counts[protocol])
+        if missing <= 0 or len(selected) >= MAX_CANDIDATES:
+            continue
+
+        rows = [
+            item for item in by_hash.values()
+            if protocol_for_candidate(item) == protocol
+            and fingerprint_uri(item["uri"]) not in selected_hashes
+        ]
+        random.shuffle(rows)
+
+        for item in rows[:missing]:
+            if len(selected) >= MAX_CANDIDATES:
+                break
+            key = fingerprint_uri(item["uri"])
+            if key in selected_hashes:
+                continue
+            selected.append(item)
+            selected_hashes.add(key)
+            selected_protocol_counts[protocol] += 1
+
+    # Fill the remaining capacity with all other candidates.
     remaining = [item for item in list(by_hash.values()) if fingerprint_uri(item["uri"]) not in selected_hashes]
     random.shuffle(remaining)
     selected.extend(remaining[:max(0, MAX_CANDIDATES - len(selected))])
@@ -220,16 +275,15 @@ def collect_candidates(sources: list[tuple[str, str]], previous: list[dict[str, 
 def make_template(path: Path) -> None:
     path.write_text(
         '{\n'
-        '  "log": {"level": "error"},\n'
-        '  "outbounds": [\n'
-        '    {{ .Unbox_outbounds }},\n'
-        '    {"type": "direct", "tag": "direct"}\n'
-        '  ],\n'
-        '  "route": {"final": "direct"}\n'
+        ' "log": {"level": "error"},\n'
+        ' "outbounds": [\n'
+        ' {{ .Unbox_outbounds }},\n'
+        ' {"type": "direct", "tag": "direct"}\n'
+        ' ],\n'
+        ' "route": {"final": "direct"}\n'
         '}\n',
         encoding="utf-8",
     )
-
 
 
 SECURE_SHADOWSOCKS_METHODS = {
@@ -302,9 +356,15 @@ def validate_outbound_security(outbound: dict[str, Any]) -> bool:
 
     tls_enabled = isinstance(tls, dict) and tls.get("enabled") is True
 
-    # These protocols must use authenticated TLS.
-    if protocol in {"vless", "trojan", "hysteria2", "tuic"}:
+    # These transports require authenticated TLS. Certificate verification is
+    # never disabled here; insecure/skip-verify flags are rejected above.
+    if protocol in {"vless", "trojan", "hysteria2", "tuic", "anytls"}:
         if not tls_enabled:
+            return False
+
+    if protocol == "anytls":
+        password = outbound.get("password")
+        if not isinstance(password, str) or not password.strip():
             return False
 
     if tls_enabled:
@@ -398,7 +458,7 @@ def convert_one(uri: str, temp_dir: Path) -> dict[str, Any] | None:
             return None
         outbound = candidates[0]
         if not validate_outbound_security(outbound):
-            print(f"REJECT stage=security-policy", flush=True)
+            print("REJECT stage=security-policy", flush=True)
             return None
         if outbound.get("detour"):
             return None
@@ -414,7 +474,6 @@ def convert_one(uri: str, temp_dir: Path) -> dict[str, Any] | None:
         return outbound
     except Exception:
         return None
-
 
 
 def parse_country(payload: Any) -> tuple[str | None, str | None]:
@@ -450,6 +509,7 @@ def parse_country(payload: Any) -> tuple[str | None, str | None]:
 
     return None, ip
 
+
 def curl_to_file(proxy: str, url: str, destination: Path, timeout: int = 7) -> tuple[int, str] | None:
     provider = urllib.parse.urlsplit(url).netloc
     command = [
@@ -461,7 +521,7 @@ def curl_to_file(proxy: str, url: str, destination: Path, timeout: int = 7) -> t
     try:
         done = subprocess.run(command, capture_output=True, text=True, timeout=timeout + 3, check=False)
         if done.returncode != 0:
-            detail = (done.stderr or "").strip().replace("\\n", " ")[:180]
+            detail = (done.stderr or "").strip().replace("\n", " ")[:180]
             print(f"GEO_CURL_FAIL provider={provider} exit={done.returncode} detail={detail}", flush=True)
             return None
 
@@ -477,10 +537,9 @@ def curl_to_file(proxy: str, url: str, destination: Path, timeout: int = 7) -> t
         print(f"GEO_TIMEOUT provider={provider}", flush=True)
         return None
     except Exception as exc:
-        detail = str(exc).replace("\\n", " ")[:160]
+        detail = str(exc).replace("\n", " ")[:160]
         print(f"GEO_EXCEPTION provider={provider} type={type(exc).__name__} detail={detail}", flush=True)
         return None
-
 
 
 def verify_exit_country(proxy: str, temp_dir: Path) -> tuple[str | None, str | None, str | None]:
@@ -538,6 +597,7 @@ def verify_exit_country(proxy: str, temp_dir: Path) -> tuple[str | None, str | N
     country = observations[0][0]
     exit_ip = next((item[1] for item in observations if item[1]), None)
     return country, exit_ip, None
+
 
 def curl_metrics(command: list[str], timeout: int) -> list[float] | None:
     try:
@@ -754,10 +814,18 @@ def main() -> int:
     sources = load_sources()
     previous = read_previous()
     candidates = collect_candidates(sources, previous)
-    print(f"Sources configured: {len(sources)}; previous pool: {len(previous)}; candidates selected: {len(candidates)}")
+    print(
+        f"Sources configured: {len(sources)}; previous pool: {len(previous)}; "
+        f"candidates selected: {len(candidates)}; max candidates: {MAX_CANDIDATES}"
+    )
     if not candidates:
         print("No candidates available; preserving the existing pool.")
         return 0
+
+    candidate_protocol_counts: dict[str, int] = defaultdict(int)
+    for candidate in candidates:
+        candidate_protocol_counts[protocol_for_candidate(candidate)] += 1
+    print("Candidate protocol sample:", json.dumps(dict(sorted(candidate_protocol_counts.items())), sort_keys=True))
 
     with tempfile.TemporaryDirectory(prefix="kalani-upload-") as upload_dir:
         upload_payload = Path(upload_dir) / "upload.bin"
@@ -800,6 +868,9 @@ def main() -> int:
             "download_minimum_mbps": round(MIN_DOWNLOAD_BPS * 8 / 1_000_000, 3),
             "upload_minimum_mbps": round(MIN_UPLOAD_BPS * 8 / 1_000_000, 3),
             "target": "speed.cloudflare.com",
+            "candidate_protocol_sample": dict(sorted(candidate_protocol_counts.items())),
+            "protocol_sampling_quotas": PROTOCOL_QUOTAS,
+            "anytls_support": "experimental-unbox-parser; authenticated TLS required; full tests required",
         },
         "countries_allowed": list(ALLOWED_COUNTRIES),
         "max_per_country": MAX_PER_COUNTRY,
@@ -815,7 +886,7 @@ def main() -> int:
     temporary_output.replace(OUTPUT_FILE)
     print("Pool published locally:", len(selected), "verified nodes")
     for country in ALLOWED_COUNTRIES:
-        print(f"  {country}: {payload['country_counts'][country]}")
+        print(f" {country}: {payload['country_counts'][country]}")
     return 0
 
 
