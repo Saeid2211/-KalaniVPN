@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Two live GeoIP witnesses plus an IPinfo Lite fallback for the same exit IP."""
+"""Fail-closed GeoIP consensus for KalaniVPN3 using Cloudflare, GeoJS and IPinfo Lite."""
 from __future__ import annotations
 
 import ipaddress
 import json
 import os
+import re
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -17,7 +18,7 @@ GEO_URLS = (
 )
 IPINFO_URL = "https://api.ipinfo.io/lite/"
 USER_AGENT = "KalaniVPN3-GeoIP/1.0"
-GEOIP_ATTRIBUTION = "IP geolocation by IPinfo — https://ipinfo.io"
+GEOIP_ATTRIBUTION = "IP geolocation by IPinfo — https://ipinfo.io (CC BY-SA 4.0)"
 
 COUNTRY_NAMES = {
     "UNITED STATES": "US",
@@ -31,6 +32,10 @@ COUNTRY_NAMES = {
     "UK": "GB",
     "FRANCE": "FR",
 }
+
+# Explicitly disable environment-configured HTTP(S) proxies. The IPinfo fallback
+# must be fetched directly from the GitHub runner, not through the candidate node.
+_DIRECT_HTTPS_OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
 
 def normalize_public_ip(value: Any) -> str | None:
@@ -47,6 +52,7 @@ def normalize_public_ip(value: Any) -> str | None:
 
 
 def parse_country(payload: Any) -> tuple[str | None, str | None]:
+    """Parse Cloudflare Trace text or a GeoJS-style JSON response."""
     if isinstance(payload, str):
         fields: dict[str, str] = {}
         for line in payload.splitlines():
@@ -68,7 +74,7 @@ def parse_country(payload: Any) -> tuple[str | None, str | None]:
 
     if isinstance(code, str):
         code = code.strip().upper()
-        if len(code) == 2 and code.isalpha():
+        if re.fullmatch(r"[A-Z]{2}", code):
             return code, ip
         normalized = COUNTRY_NAMES.get(code)
         if normalized:
@@ -77,7 +83,7 @@ def parse_country(payload: Any) -> tuple[str | None, str | None]:
 
 
 def parse_ipinfo_response(payload: Any, expected_ip: str) -> str | None:
-    """Accept an IPinfo vote only when it explicitly refers to the same exit IP."""
+    """Accept an IPinfo vote only when it explicitly identifies the same exit IP."""
     if not isinstance(payload, dict):
         return None
     response_ip = normalize_public_ip(payload.get("ip"))
@@ -87,14 +93,20 @@ def parse_ipinfo_response(payload: Any, expected_ip: str) -> str | None:
     if not isinstance(code, str):
         return None
     code = code.strip().upper()
-    if len(code) != 2 or not code.isalpha():
+    if not re.fullmatch(r"[A-Z]{2}", code):
         return None
     return code
 
 
 def _query_live_provider( proxy: str, url: str, destination: Path, curl_to_file: Callable[..., tuple[int, str] | None], ) -> tuple[str, str, str] | None:
+    """Fetch one GeoIP observation through the candidate proxy."""
     provider = urllib.parse.urlsplit(url).netloc
-    result = curl_to_file(proxy, url, destination, timeout=7)
+    try:
+        result = curl_to_file(proxy, url, destination, timeout=7)
+    except Exception as exc:
+        print(f"GEO_PROVIDER_EXCEPTION provider={provider} type={type(exc).__name__}", flush=True)
+        return None
+
     if not result or result[0] != 200:
         print(f"GEO_PROVIDER_UNAVAILABLE provider={provider}", flush=True)
         return None
@@ -119,16 +131,19 @@ def _query_live_provider( proxy: str, url: str, destination: Path, curl_to_file:
 
 
 def lookup_ipinfo_country(exit_ip: str) -> str | None:
-    """Look up a supplied exit IP directly from the runner, never through the candidate proxy."""
+    """Look up an observed exit IP directly from the runner using IPinfo Lite."""
     token = os.environ.get("IPINFO_TOKEN", "").strip()
     if not token:
         print("IPINFO_LOOKUP_UNAVAILABLE reason=missing-actions-secret", flush=True)
         return None
 
+    if normalize_public_ip(exit_ip) != exit_ip:
+        print("IPINFO_LOOKUP_UNAVAILABLE reason=invalid-exit-ip", flush=True)
+        return None
+
     encoded_ip = urllib.parse.quote(exit_ip, safe=":")
-    url = IPINFO_URL + encoded_ip
     request = urllib.request.Request(
-        url,
+        IPINFO_URL + encoded_ip,
         headers={
             "Authorization": f"Bearer {token}",
             "Accept": "application/json",
@@ -136,9 +151,9 @@ def lookup_ipinfo_country(exit_ip: str) -> str | None:
         },
     )
     try:
-        # This request uses the GitHub runner's direct HTTPS connection. It does
-        # not depend on whether the candidate proxy can reach a GeoIP API.
-        with urllib.request.urlopen(request, timeout=10) as response:
+        # The explicitly configured opener has ProxyHandler({}), so environment
+        # proxy variables cannot route this request through the candidate proxy.
+        with _DIRECT_HTTPS_OPENER.open(request, timeout=10) as response:
             body = response.read(32 * 1024 + 1)
         if len(body) > 32 * 1024:
             print("IPINFO_LOOKUP_FAILED reason=response-too-large", flush=True)
@@ -159,23 +174,40 @@ def lookup_ipinfo_country(exit_ip: str) -> str | None:
 
 
 def resolve_geo_quorum( observations: list[tuple[str, str, str]], ipinfo_country: str | None = None, ) -> tuple[str | None, str | None, str | None]:
-    """Require two of three country votes for one identical public exit IP."""
+    """Require two independent country votes for one identical public exit IP."""
     if not observations:
         return None, None, "geolocation-no-provider-observation"
 
-    exit_ips = {item[1] for item in observations if item[1]}
-    if len(exit_ips) != 1 or any(not item[1] for item in observations):
-        return None, None, "geolocation-exit-ip-disagreement"
+    normalized: list[tuple[str, str, str]] = []
+    seen_providers: set[str] = set()
+    for item in observations:
+        if not isinstance(item, tuple) or len(item) != 3:
+            return None, None, "geolocation-invalid-provider-observation"
+        country, raw_ip, provider = item
+        if not isinstance(country, str) or not re.fullmatch(r"[A-Za-z]{2}", country.strip()):
+            return None, None, "geolocation-invalid-provider-observation"
+        exit_ip = normalize_public_ip(raw_ip)
+        if not exit_ip or not isinstance(provider, str) or not provider.strip():
+            return None, None, "geolocation-invalid-provider-observation"
+        provider = provider.strip().lower()
+        if provider in seen_providers:
+            return None, exit_ip, "geolocation-duplicate-provider"
+        seen_providers.add(provider)
+        normalized.append((country.strip().upper(), exit_ip, provider))
 
+    exit_ips = {item[1] for item in normalized}
+    if len(exit_ips) != 1:
+        return None, None, "geolocation-exit-ip-disagreement"
     exit_ip = next(iter(exit_ips))
+
     counts: dict[str, int] = {}
-    for country, _ip, _provider in observations:
+    for country, _ip, _provider in normalized:
         counts[country] = counts.get(country, 0) + 1
 
     if isinstance(ipinfo_country, str):
-        ipinfo_country = ipinfo_country.strip().upper()
-        if len(ipinfo_country) == 2 and ipinfo_country.isalpha():
-            counts[ipinfo_country] = counts.get(ipinfo_country, 0) + 1
+        candidate = ipinfo_country.strip().upper()
+        if re.fullmatch(r"[A-Z]{2}", candidate):
+            counts[candidate] = counts.get(candidate, 0) + 1
 
     winners = [country for country, count in counts.items() if count >= 2]
     if len(winners) != 1:
@@ -184,7 +216,7 @@ def resolve_geo_quorum( observations: list[tuple[str, str, str]], ipinfo_country
 
 
 def verify_exit_country( proxy: str, temp_dir: Path, curl_to_file: Callable[..., tuple[int, str] | None], ) -> tuple[str | None, str | None, str | None]:
-    """Two proxy-routed witnesses; IPinfo Lite is the direct third vote if needed."""
+    """Use two proxy-routed witnesses and IPinfo Lite as a direct third vote."""
     observations: list[tuple[str, str, str]] = []
     for index, url in enumerate(GEO_URLS):
         item = _query_live_provider(proxy, url, temp_dir / f"geo-{index}.json", curl_to_file)
@@ -206,8 +238,8 @@ def verify_exit_country( proxy: str, temp_dir: Path, curl_to_file: Callable[...,
     live_agreement = len(observations) == 2 and len(live_countries) == 1
     ipinfo_country = None
 
-    # The fallback is called only when a live service failed or the two live
-    # services disagree. It looks up the exact observed IP over direct HTTPS.
+    # Ask IPinfo only when a live witness failed or the two live witnesses disagree.
+    # It looks up the exact observed IP over a direct HTTPS connection.
     if not live_agreement:
         ipinfo_country = lookup_ipinfo_country(exit_ip)
         if ipinfo_country:
