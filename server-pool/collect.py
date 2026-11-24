@@ -127,7 +127,12 @@ def fetch_text(url: str) -> str:
     return text
 
 
+def _query_flag_is_true(values: list[str]) -> bool:
+    return any(str(value).strip().lower() in {"1", "true", "yes", "on"} for value in values)
+
+
 def normalize_uri(raw: str) -> str | None:
+    """Keep only supported links that do not explicitly disable TLS verification."""
     line = raw.strip().strip("\ufeff")
     if not line or line.startswith("#") or len(line) > 8192:
         return None
@@ -138,10 +143,33 @@ def normalize_uri(raw: str) -> str | None:
         return None
     try:
         parsed = urllib.parse.urlsplit(line)
-        params = urllib.parse.parse_qs(parsed.query)
+        params = urllib.parse.parse_qs(parsed.query, keep_blank_values=True)
         transport = params.get("type", [""])[0].lower()
         if transport == "xhttp" or "xhttp" in line.lower():
             return None
+
+        # Never spend a test slot on a URI that asks the converter to skip
+        # certificate verification. The final outbound policy checks this again.
+        insecure_keys = {
+            "insecure", "allow_insecure", "skip_cert_verify", "skip_verify",
+            "skip_certificate_verification",
+        }
+        for key, values in params.items():
+            normalized_key = key.strip().lower().replace("-", "_")
+            if normalized_key in insecure_keys and _query_flag_is_true(values):
+                return None
+
+        # unbox requires an explicit TLS option for Hysteria2. This early check
+        # avoids filling the Hysteria2 sampling quota with links it cannot parse.
+        if scheme in {"hysteria2", "hy2"}:
+            has_sni = bool(params.get("sni", [""])[0].strip())
+            has_fingerprint = bool(params.get("fp", [""])[0].strip())
+            has_reality = (
+                params.get("security", [""])[0].strip().lower() == "reality"
+                and bool(params.get("pbk", [""])[0].strip())
+            )
+            if not (has_sni or has_fingerprint or has_reality):
+                return None
     except Exception:
         return None
     return line
@@ -338,51 +366,44 @@ def _contains_insecure_setting(value: Any) -> bool:
     return False
 
 
-def validate_outbound_security(outbound: dict[str, Any]) -> bool:
-    """Fail closed on unsupported protocols and weak or insecure encryption."""
+def outbound_security_rejection(outbound: dict[str, Any]) -> str | None:
+    """Return a non-sensitive rejection code, or None when policy is satisfied."""
     if not isinstance(outbound, dict):
-        return False
+        return "invalid-outbound-object"
 
     protocol = str(outbound.get("type", "")).strip().lower()
     if protocol not in SUPPORTED_OUTBOUNDS:
-        return False
+        return "unsupported-outbound-type"
 
     if _contains_insecure_setting(outbound):
-        return False
+        return "tls-verification-disabled"
 
     tls = outbound.get("tls")
     if tls is not None and not isinstance(tls, dict):
-        return False
+        return "invalid-tls-object"
 
     tls_enabled = isinstance(tls, dict) and tls.get("enabled") is True
-
-    # These transports require authenticated TLS. Certificate verification is
-    # never disabled here; insecure/skip-verify flags are rejected above.
-    if protocol in {"vless", "trojan", "hysteria2", "tuic", "anytls"}:
-        if not tls_enabled:
-            return False
+    if protocol in {"vless", "trojan", "hysteria2", "tuic", "anytls"} and not tls_enabled:
+        return "required-tls-not-enabled"
 
     if protocol == "anytls":
         password = outbound.get("password")
         if not isinstance(password, str) or not password.strip():
-            return False
+            return "anytls-password-missing"
 
     if tls_enabled:
         versions = {"1.2": 12, "1.3": 13}
-
         min_version = str(tls.get("min_version", "")).strip()
         max_version = str(tls.get("max_version", "")).strip()
-
         if min_version and min_version not in versions:
-            return False
+            return "unsupported-tls-min-version"
         if max_version and max_version not in versions:
-            return False
+            return "unsupported-tls-max-version"
 
         effective_min = versions.get(min_version, 12)
         effective_max = versions.get(max_version, 13)
-
         if effective_min > effective_max:
-            return False
+            return "invalid-tls-version-range"
 
         secure_tls12_suites = {
             "TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256",
@@ -392,88 +413,111 @@ def validate_outbound_security(outbound: dict[str, Any]) -> bool:
             "TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256",
             "TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256",
         }
-
         cipher_suites = tls.get("cipher_suites", [])
         if not isinstance(cipher_suites, list):
-            return False
-
+            return "invalid-tls-cipher-suites"
         if any(
-            not isinstance(item, str)
-            or item.upper() not in secure_tls12_suites
+            not isinstance(item, str) or item.upper() not in secure_tls12_suites
             for item in cipher_suites
         ):
-            return False
+            return "weak-or-unknown-tls-cipher-suite"
 
         reality = tls.get("reality")
         if reality is not None:
             if not isinstance(reality, dict):
-                return False
+                return "invalid-reality-options"
             if reality.get("enabled") is True:
                 public_key = str(reality.get("public_key", "")).strip()
                 if not public_key:
-                    return False
+                    return "reality-public-key-missing"
 
     if protocol == "shadowsocks":
         method = str(outbound.get("method", "")).strip().lower()
         if method not in SECURE_SHADOWSOCKS_METHODS:
-            return False
+            return "weak-or-unsupported-shadowsocks-method"
 
     if protocol == "vmess":
         security = str(outbound.get("security", "auto")).strip().lower()
         if security not in SECURE_VMESS_METHODS:
-            return False
-
+            return "weak-or-unsupported-vmess-security"
         try:
             alter_id = int(outbound.get("alter_id", 0))
         except (TypeError, ValueError):
-            return False
-
-        # VMess alter_id > 0 selects the legacy protocol.
+            return "invalid-vmess-alter-id"
         if alter_id != 0:
-            return False
+            return "legacy-vmess-alter-id"
 
-    return True
+    return None
 
 
-def convert_one(uri: str, temp_dir: Path) -> dict[str, Any] | None:
+def validate_outbound_security(outbound: dict[str, Any]) -> bool:
+    """Fail closed on unsupported protocols and weak or insecure encryption."""
+    return outbound_security_rejection(outbound) is None
+
+
+def convert_one(uri: str, temp_dir: Path) -> tuple[dict[str, Any] | None, str | None]:
     input_path = temp_dir / "one-uri.txt"
     template_path = temp_dir / "template.json"
     output_path = temp_dir / "parsed.json"
     input_path.write_text(uri + "\n", encoding="utf-8")
     make_template(template_path)
-    result = subprocess.run(
-        [UNBOX, "parse", "-f", str(input_path), "-t", str(template_path), "-o", str(output_path), "-j", "-n"],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        timeout=10,
-        check=False,
-    )
-    if result.returncode != 0 or not output_path.is_file():
-        return None
+
+    try:
+        result = subprocess.run(
+            [UNBOX, "parse", "-f", str(input_path), "-t", str(template_path), "-o", str(output_path), "-j", "-n"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=10,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        return None, "unbox-timeout"
+    except Exception as exc:
+        return None, "unbox-exception-" + type(exc).__name__.lower()
+
+    if result.returncode != 0:
+        return None, f"unbox-exit-{result.returncode}"
+    if not output_path.is_file():
+        return None, "unbox-output-missing"
+
     try:
         parsed = json.loads(output_path.read_text(encoding="utf-8"))
-        outbound_list = parsed.get("outbounds", [])
-        candidates = [item for item in outbound_list if isinstance(item, dict) and item.get("type") in SUPPORTED_OUTBOUNDS]
-        if len(candidates) != 1:
-            return None
-        outbound = candidates[0]
-        if not validate_outbound_security(outbound):
-            print("REJECT stage=security-policy", flush=True)
-            return None
-        if outbound.get("detour"):
-            return None
-        if (outbound.get("transport") or {}).get("type", "").lower() == "xhttp":
-            return None
-        if not isinstance(outbound.get("server"), str) or not outbound.get("server"):
-            return None
+    except Exception as exc:
+        return None, "unbox-output-invalid-" + type(exc).__name__.lower()
+
+    if not isinstance(parsed, dict):
+        return None, "unbox-output-not-object"
+    outbound_list = parsed.get("outbounds", [])
+    if not isinstance(outbound_list, list):
+        return None, "unbox-outbounds-not-list"
+    candidates = [
+        item for item in outbound_list
+        if isinstance(item, dict) and item.get("type") in SUPPORTED_OUTBOUNDS
+    ]
+    if len(candidates) != 1:
+        return None, "supported-outbound-count-" + str(len(candidates))
+
+    outbound = candidates[0]
+    security_reason = outbound_security_rejection(outbound)
+    if security_reason:
+        return None, "security-" + security_reason
+    if outbound.get("detour"):
+        return None, "candidate-has-detour"
+    transport = outbound.get("transport") or {}
+    if isinstance(transport, dict) and str(transport.get("type", "")).lower() == "xhttp":
+        return None, "unsupported-xhttp-transport"
+    if not isinstance(outbound.get("server"), str) or not outbound.get("server"):
+        return None, "server-address-missing"
+    try:
         port = int(outbound.get("server_port", 0))
-        if not 1 <= port <= 65535:
-            return None
-        outbound["server_port"] = port
-        outbound["tag"] = "kalani-candidate"
-        return outbound
-    except Exception:
-        return None
+    except (TypeError, ValueError):
+        return None, "server-port-invalid"
+    if not 1 <= port <= 65535:
+        return None, "server-port-out-of-range"
+
+    outbound["server_port"] = port
+    outbound["tag"] = "kalani-candidate"
+    return outbound, None
 
 
 def parse_country(payload: Any) -> tuple[str | None, str | None]:
@@ -670,38 +714,53 @@ def score_node(download_bps: float, upload_bps: float, ttfb: float) -> float:
 
 
 def test_candidate(index: int, candidate: dict[str, str], upload_payload: Path) -> dict[str, Any] | None:
+    protocol_hint = protocol_for_candidate(candidate)
+    candidate_label = f"candidate={index+1} protocol={protocol_hint}"
+
     with tempfile.TemporaryDirectory(prefix="kalani-node-") as work:
         temp_dir = Path(work)
-        outbound = convert_one(candidate["uri"], temp_dir)
+        outbound, conversion_error = convert_one(candidate["uri"], temp_dir)
         if not outbound:
-            print(f"REJECT candidate={index+1} stage=uri-conversion", flush=True)
+            print(f"REJECT {candidate_label} stage={conversion_error or 'conversion-failed'}", flush=True)
             return None
+
+        protocol = str(outbound.get("type", protocol_hint)).lower()
+        candidate_label = f"candidate={index+1} protocol={protocol}"
         port = 20000 + index
         config_path = temp_dir / "sing-box-test.json"
         config_path.write_text(json.dumps(make_test_config(outbound, port), ensure_ascii=False), encoding="utf-8")
-        checked = subprocess.run(
-            [SING_BOX, "check", "-c", str(config_path)],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            timeout=8,
-            check=False,
-        )
+        try:
+            checked = subprocess.run(
+                [SING_BOX, "check", "-c", str(config_path)],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=8,
+                check=False,
+            )
+        except subprocess.TimeoutExpired:
+            print(f"REJECT {candidate_label} stage=sing-box-config-check-timeout", flush=True)
+            return None
         if checked.returncode != 0:
-            print(f"REJECT candidate={index+1} stage=sing-box-config-check", flush=True)
+            print(f"REJECT {candidate_label} stage=sing-box-config-check-exit-{checked.returncode}", flush=True)
             return None
 
-        process = subprocess.Popen(
-            [SING_BOX, "run", "-c", str(config_path)],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            start_new_session=True,
-        )
+        try:
+            process = subprocess.Popen(
+                [SING_BOX, "run", "-c", str(config_path)],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+        except Exception as exc:
+            print(f"REJECT {candidate_label} stage=sing-box-start-{type(exc).__name__.lower()}", flush=True)
+            return None
+
         proxy = f"socks5h://127.0.0.1:{port}"
         try:
             ready = False
             for _ in range(30):
                 if process.poll() is not None:
-                    print(f"REJECT candidate={index+1} stage=sing-box-exited", flush=True)
+                    print(f"REJECT {candidate_label} stage=sing-box-exited", flush=True)
                     return None
                 try:
                     with socket.create_connection(("127.0.0.1", port), timeout=0.25):
@@ -710,39 +769,38 @@ def test_candidate(index: int, candidate: dict[str, str], upload_payload: Path) 
                 except OSError:
                     time.sleep(0.2)
             if not ready:
-                print(f"REJECT candidate={index+1} stage=socks-not-ready", flush=True)
+                print(f"REJECT {candidate_label} stage=socks-not-ready", flush=True)
                 return None
 
             country, exit_ip, geo_error = verify_exit_country(proxy, temp_dir)
             if geo_error or country not in ALLOWED_COUNTRIES:
                 reason = geo_error or "country-not-allowed"
-                print(f"REJECT candidate={index+1} stage={reason}", flush=True)
+                print(f"REJECT {candidate_label} stage={reason}", flush=True)
                 return None
 
             downloads: list[dict[str, float]] = []
             for round_no in (1, 2):
                 sample = test_download(proxy)
                 if not sample:
-                    print(f"REJECT candidate={index+1} stage=download-round-{round_no}", flush=True)
+                    print(f"REJECT {candidate_label} stage=download-round-{round_no}", flush=True)
                     return None
                 downloads.append(sample)
                 time.sleep(0.5)
 
             upload = test_upload(proxy, upload_payload)
             if not upload:
-                print(f"REJECT candidate={index+1} stage=upload", flush=True)
+                print(f"REJECT {candidate_label} stage=upload", flush=True)
                 return None
 
             median_download = statistics.median(item["bps"] for item in downloads)
             median_ttfb = statistics.median(item["ttfb"] for item in downloads)
             upload_bps = upload["bps"]
             if median_download < MIN_DOWNLOAD_BPS or upload_bps < MIN_UPLOAD_BPS:
-                print(f"REJECT candidate={index+1} stage=throughput-below-threshold", flush=True)
+                print(f"REJECT {candidate_label} stage=throughput-below-threshold", flush=True)
                 return None
 
             server = outbound.get("server", "")
             port_value = int(outbound.get("server_port", 0))
-            protocol = outbound.get("type", "unknown")
             fingerprint = hashlib.sha256(
                 json.dumps({key: value for key, value in outbound.items() if key != "tag"},
                            sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
@@ -771,7 +829,7 @@ def test_candidate(index: int, candidate: dict[str, str], upload_payload: Path) 
                 },
             }
         except Exception as exc:
-            print(f"REJECT candidate={index+1} stage=exception-{type(exc).__name__}", flush=True)
+            print(f"REJECT {candidate_label} stage=exception-{type(exc).__name__.lower()}", flush=True)
             return None
         finally:
             if process.poll() is None:
@@ -870,7 +928,8 @@ def main() -> int:
             "target": "speed.cloudflare.com",
             "candidate_protocol_sample": dict(sorted(candidate_protocol_counts.items())),
             "protocol_sampling_quotas": PROTOCOL_QUOTAS,
-            "anytls_support": "experimental-unbox-parser; authenticated TLS required; full tests required",
+            "anytls_support": "experimental-unbox-parser; authenticated TLS required; certificate-verification bypass candidates excluded before sampling",
+            "candidate_prefilter": "Explicit insecure/skip-verification URI flags are excluded before protocol quotas; per-candidate rejection logs include protocol and stage but never URI credentials",
         },
         "countries_allowed": list(ALLOWED_COUNTRIES),
         "max_per_country": MAX_PER_COUNTRY,
