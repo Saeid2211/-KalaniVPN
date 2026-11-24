@@ -12,3 +12,4 @@ https://raw.githubusercontent.com/Au1rxx/free-vpn-subscriptions/main/output/by-c
 https://raw.githubusercontent.com/Au1rxx/free-vpn-subscriptions/main/output/by-country/v2ray-base64-NL.txt|NL
 https://raw.githubusercontent.com/Au1rxx/free-vpn-subscriptions/main/output/by-country/v2ray-base64-GB.txt|GB
 https://raw.githubusercontent.com/Au1rxx/free-vpn-subscriptions/main/output/by-country/v2ray-base64-FR.txt|FR
+https://raw.githubusercontent.com/Barabama/FreeNodes/main/nodes/merged.txt
