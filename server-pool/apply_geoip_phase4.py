@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Safely adapt the known KalaniVPN3 collector to the IPinfo Lite GeoIP module. The patch is intentionally strict and idempotent. It validates the actual Python structure of the collector (rather than relying on comment formatting), then writes atomically. Unknown collector layouts are rejected without edits. """
+"""Safely adapt the known KalaniVPN3 collector to the IPinfo Lite GeoIP module. The patch is strict, idempotent, validates the collector's Python AST, writes atomically, and adds safe NameError diagnostics to source-feed fetch failures. It never prints feed URLs, subscription contents, credentials, or response bodies. """
 from __future__ import annotations
 
 import ast
@@ -11,6 +11,7 @@ ROOT = Path(__file__).resolve().parent
 COLLECTOR = ROOT / "collect.py"
 IMPORT_LINE = "from geoip_ipinfo import verify_exit_country as verify_exit_country_ipinfo"
 WRAPPER_MARKER = "return verify_exit_country_ipinfo(proxy, temp_dir, curl_to_file)"
+SOURCE_DIAGNOSTIC_MARKER = "NameError missing_name="
 
 OLD_GEO_URLS = (
     "https://www.cloudflare.com/cdn-cgi/trace",
@@ -29,6 +30,9 @@ NEW_GEO_BLOCK = '''# Country verification uses two candidate-routed witnesses. I
 
 OLD_COUNTRY_RULE = '"country_rule": "At least two independent GeoIP providers must agree; a third provider is queried only if the first two fail or disagree",'
 NEW_COUNTRY_METADATA = '''"country_rule": "Two candidate-routed GeoIP witnesses must agree on the same public exit IP, or one live witness and direct IPinfo Lite lookup for that exact IP must agree; otherwise the candidate is rejected", "geoip_live_providers": ["Cloudflare Trace", "GeoJS"], "geoip_fallback_provider": { "name": "IPinfo Lite", "endpoint": "https://api.ipinfo.io/lite/{ip}", "authentication": "Authorization: Bearer", "token_source": "GitHub Actions secret IPINFO_TOKEN", "connection": "Direct HTTPS from GitHub runner, not through candidate proxy", "attribution": "IP geolocation by IPinfo — https://ipinfo.io (CC BY-SA 4.0)", },'''
+
+OLD_SOURCE_FETCH_LOG = ' print(f"Source fetch failed ({urllib.parse.urlsplit(url).netloc}): {type(exc).__name__}")'
+NEW_SOURCE_FETCH_LOG = ''' host = urllib.parse.urlsplit(url).netloc if isinstance(exc, NameError): missing_name = getattr(exc, "name", None) or "unknown" # A NameError identifier is safe to log; never print exception # text, the complete source URL, feed body, or subscription data. print(f"Source fetch failed ({host}): NameError missing_name={missing_name}", flush=True) else: print(f"Source fetch failed ({host}): {type(exc).__name__}", flush=True)'''
 
 
 def replace_exactly_once(source: str, old: str, new: str, label: str) -> str:
@@ -60,9 +64,8 @@ def replace_geo_urls_assignment(source: str) -> str:
         )
 
     node = matches[0]
-    value_node = node.value
     try:
-        current_urls = ast.literal_eval(value_node)
+        current_urls = ast.literal_eval(node.value)
     except (ValueError, TypeError):
         raise RuntimeError("Refusing patch: GEO_URLS is not a literal tuple")
 
@@ -77,15 +80,11 @@ def replace_geo_urls_assignment(source: str) -> str:
     start = node.lineno - 1
     end = node.end_lineno
 
-    # Remove the two known obsolete comments if they immediately precede the
-    # assignment. Their exact formatting is not required for matching.
     if start >= 2 and tuple(line.strip() for line in lines[start - 2:start]) == OLD_GEO_COMMENTS:
         start -= 2
 
-    replacement = NEW_GEO_BLOCK.splitlines(keepends=True)
-    lines[start:end] = replacement
+    lines[start:end] = NEW_GEO_BLOCK.splitlines(keepends=True)
     updated = "".join(lines)
-
     if "https://ipapi.co/json/" in updated:
         raise RuntimeError("Refusing patch: obsolete ipapi.co endpoint remains after GEO_URLS update")
     return updated
@@ -107,47 +106,58 @@ def atomic_write(path: Path, content: str) -> None:
         raise
 
 
+def patch_source_fetch_diagnostic(source: str) -> str:
+    if SOURCE_DIAGNOSTIC_MARKER in source:
+        return source
+    return replace_exactly_once(
+        source,
+        OLD_SOURCE_FETCH_LOG,
+        NEW_SOURCE_FETCH_LOG,
+        "safe source-fetch NameError diagnostic",
+    )
+
+
 def main() -> int:
     if not COLLECTOR.is_file():
         raise FileNotFoundError("server-pool/collect.py not found")
 
     source = COLLECTOR.read_text(encoding="utf-8")
-    already_patched = (
+    phase4_present = (
         IMPORT_LINE in source
         and WRAPPER_MARKER in source
         and '"name": "IPinfo Lite"' in source
         and "ipapi.co/json" not in source
-        and '"https://get.geojs.io/v1/ip/geo.json"' in source
     )
-    if already_patched:
-        ast.parse(source, filename=str(COLLECTOR))
-        print("GeoIP Phase 4 patch already applied; no change needed.")
-        return 0
 
-    if IMPORT_LINE in source or WRAPPER_MARKER in source:
-        raise RuntimeError("Refusing patch: collector appears partially patched; inspect it manually")
+    if not phase4_present:
+        if IMPORT_LINE in source or WRAPPER_MARKER in source:
+            raise RuntimeError("Refusing patch: collector appears partially patched; inspect it manually")
 
-    source = replace_exactly_once(
-        source,
-        "from typing import Any\n",
-        "from typing import Any\n" + IMPORT_LINE + "\n",
-        "collector import insertion point",
-    )
-    source = replace_geo_urls_assignment(source)
+        source = replace_exactly_once(
+            source,
+            "from typing import Any\n",
+            "from typing import Any\n" + IMPORT_LINE + "\n",
+            "collector import insertion point",
+        )
+        source = replace_geo_urls_assignment(source)
 
-    function_start = source.find("def _query_geo_provider(")
-    if function_start < 0 or source.find("def _query_geo_provider(", function_start + 1) >= 0:
-        raise RuntimeError("Refusing patch: expected exactly one old _query_geo_provider function")
-    function_end = source.find("\ndef curl_metrics(", function_start)
-    if function_end < 0:
-        raise RuntimeError("Refusing patch: end of old GeoIP function block was not found")
-    old_function_block = source[function_start:function_end]
-    if "def verify_exit_country(" not in old_function_block:
-        raise RuntimeError("Refusing patch: old verify_exit_country function was not found in expected block")
+        function_start = source.find("def _query_geo_provider(")
+        if function_start < 0 or source.find("def _query_geo_provider(", function_start + 1) >= 0:
+            raise RuntimeError("Refusing patch: expected exactly one old _query_geo_provider function")
+        function_end = source.find("\ndef curl_metrics(", function_start)
+        if function_end < 0:
+            raise RuntimeError("Refusing patch: end of old GeoIP function block was not found")
+        old_function_block = source[function_start:function_end]
+        if "def verify_exit_country(" not in old_function_block:
+            raise RuntimeError("Refusing patch: old verify_exit_country function was not found in expected block")
 
-    replacement_wrapper = '''def verify_exit_country(proxy: str, temp_dir: Path) -> tuple[str | None, str | None, str | None]: return verify_exit_country_ipinfo(proxy, temp_dir, curl_to_file) '''
-    source = source[:function_start] + replacement_wrapper + source[function_end:]
-    source = replace_exactly_once(source, OLD_COUNTRY_RULE, NEW_COUNTRY_METADATA, "Pool GeoIP validation metadata")
+        replacement_wrapper = '''def verify_exit_country(proxy: str, temp_dir: Path) -> tuple[str | None, str | None, str | None]: return verify_exit_country_ipinfo(proxy, temp_dir, curl_to_file) '''
+        source = source[:function_start] + replacement_wrapper + source[function_end:]
+        source = replace_exactly_once(
+            source, OLD_COUNTRY_RULE, NEW_COUNTRY_METADATA, "Pool GeoIP validation metadata"
+        )
+
+    source = patch_source_fetch_diagnostic(source)
 
     required_markers = (
         IMPORT_LINE,
@@ -155,6 +165,7 @@ def main() -> int:
         '"https://get.geojs.io/v1/ip/geo.json"',
         '"name": "IPinfo Lite"',
         '"token_source": "GitHub Actions secret IPINFO_TOKEN"',
+        SOURCE_DIAGNOSTIC_MARKER,
     )
     for marker in required_markers:
         if marker not in source:
@@ -163,8 +174,15 @@ def main() -> int:
         raise RuntimeError("Refusing patch: obsolete ipapi.co endpoint remains")
 
     ast.parse(source, filename=str(COLLECTOR))
-    atomic_write(COLLECTOR, source)
-    print("GeoIP Phase 4 patch applied successfully to server-pool/collect.py")
+    if "GEO_URLS = (" not in source:
+        raise RuntimeError("Refusing patch: GEO_URLS assignment missing after patch")
+
+    changed = source != COLLECTOR.read_text(encoding="utf-8")
+    if changed:
+        atomic_write(COLLECTOR, source)
+        print("GeoIP Phase 4 patch and safe source diagnostics applied to server-pool/collect.py")
+    else:
+        print("GeoIP Phase 4 patch and safe source diagnostics already applied; no change needed.")
     return 0
 
 
