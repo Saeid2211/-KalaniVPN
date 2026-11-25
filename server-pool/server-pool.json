@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-11-25T16:41:42Z",
+  "generated_at": "2026-11-25T18:52:42Z",
   "engine": {
     "name": "sing-box",
     "version": "1.14.4"
@@ -27,10 +27,10 @@
     "candidate_protocol_sample": {
       "anytls": 2,
       "hysteria2": 3,
-      "shadowsocks": 22,
-      "trojan": 21,
-      "vless": 68,
-      "vmess": 4
+      "shadowsocks": 21,
+      "trojan": 22,
+      "vless": 67,
+      "vmess": 5
     },
     "protocol_sampling_quotas": {
       "anytls": 2,
@@ -55,12 +55,98 @@
   "max_age_minutes": 90,
   "country_counts": {
     "US": 5,
-    "DE": 1,
+    "DE": 2,
     "NL": 5,
     "GB": 1,
     "FR": 5
   },
   "nodes": [
+    {
+      "id": "21641b753b45c0e76b18",
+      "country": "US",
+      "protocol": "vless",
+      "server": "185.95.231.156",
+      "server_port": 443,
+      "uri": "vless://1f8cf47a-b66a-4916-979f-26edfcf44eea@185.95.231.156:443?flow=xtls-rprx-vision&fp=chrome&pbk=8eXftARun6KH38UZhuqIfPR1VF2DLS9RMBZEnF5k6To&security=reality&sid=a3a578ab&sni=www.apple.com&type=tcp#vless-1828372448",
+      "outbound": {
+        "type": "vless",
+        "tag": "kalani-21641b753b45",
+        "server": "185.95.231.156",
+        "server_port": 443,
+        "uuid": "1f8cf47a-b66a-4916-979f-26edfcf44eea",
+        "flow": "xtls-rprx-vision",
+        "tls": {
+          "enabled": true,
+          "server_name": "www.apple.com",
+          "utls": {
+            "enabled": true,
+            "fingerprint": "chrome"
+          },
+          "reality": {
+            "enabled": true,
+            "public_key": "8eXftARun6KH38UZhuqIfPR1VF2DLS9RMBZEnF5k6To",
+            "short_id": "a3a578ab"
+          }
+        },
+        "packet_encoding": "xudp"
+      },
+      "source": "previous-pool",
+      "exit_ip": "185.95.231.156",
+      "status": "verified",
+      "tested_at": "2026-11-25T18:51:00Z",
+      "metrics": {
+        "download_mbps": 12.107,
+        "upload_mbps": 4.16,
+        "download_bytes_each_round": 1048576,
+        "upload_bytes": 262144,
+        "ttfb_ms": 307.9,
+        "download_rounds_passed": 2,
+        "score": 73.38
+      }
+    },
+    {
+      "id": "3d50c57f66e30a40a9ba",
+      "country": "US",
+      "protocol": "vless",
+      "server": "169.40.42.168",
+      "server_port": 443,
+      "uri": "vless://d65cc14c-f53f-4fe2-b262-97856601319c@169.40.42.168:443?flow=xtls-rprx-vision&fp=chrome&pbk=e2RLf57Li_-MDZGE9ss1BWPgP54mqRb5PfXhW2jcVVg&security=reality&sid=c39cc7310a&sni=yahoo.com&type=tcp#vless-1827533211",
+      "outbound": {
+        "type": "vless",
+        "tag": "kalani-3d50c57f66e3",
+        "server": "169.40.42.168",
+        "server_port": 443,
+        "uuid": "d65cc14c-f53f-4fe2-b262-97856601319c",
+        "flow": "xtls-rprx-vision",
+        "tls": {
+          "enabled": true,
+          "server_name": "yahoo.com",
+          "utls": {
+            "enabled": true,
+            "fingerprint": "chrome"
+          },
+          "reality": {
+            "enabled": true,
+            "public_key": "e2RLf57Li_-MDZGE9ss1BWPgP54mqRb5PfXhW2jcVVg",
+            "short_id": "c39cc7310a"
+          }
+        },
+        "packet_encoding": "xudp"
+      },
+      "source": "raw.githubusercontent.comtions/main/output/by-country/v2ray-base64-US.txt",
+      "exit_ip": "45.144.112.55",
+      "status": "verified",
+      "tested_at": "2026-11-25T18:51:24Z",
+      "metrics": {
+        "download_mbps": 10.82,
+        "upload_mbps": 3.139,
+        "download_bytes_each_round": 1048576,
+        "upload_bytes": 262144,
+        "ttfb_ms": 381.8,
+        "download_rounds_passed": 2,
+        "score": 65.48
+      }
+    },
     {
       "id": "4b65f8d59d66b2ce18a6",
       "country": "US",
@@ -90,18 +176,18 @@
         },
         "packet_encoding": "xudp"
       },
-      "source": "raw.githubusercontent.comtions/main/output/by-country/v2ray-base64-US.txt",
+      "source": "previous-pool",
       "exit_ip": "185.195.57.168",
       "status": "verified",
-      "tested_at": "2026-11-25T16:41:14Z",
+      "tested_at": "2026-11-25T18:50:56Z",
       "metrics": {
-        "download_mbps": 11.651,
-        "upload_mbps": 2.888,
+        "download_mbps": 9.876,
+        "upload_mbps": 3.866,
         "download_bytes_each_round": 1048576,
         "upload_bytes": 262144,
-        "ttfb_ms": 330.3,
+        "ttfb_ms": 460.0,
         "download_rounds_passed": 2,
-        "score": 67.75
+        "score": 64.19
       }
     },
     {
@@ -136,44 +222,15 @@
       "source": "previous-pool",
       "exit_ip": "162.120.69.84",
       "status": "verified",
-      "tested_at": "2026-11-25T16:39:56Z",
+      "tested_at": "2026-11-25T18:50:56Z",
       "metrics": {
-        "download_mbps": 10.698,
-        "upload_mbps": 3.544,
+        "download_mbps": 10.01,
+        "upload_mbps": 3.147,
         "download_bytes_each_round": 1048576,
         "upload_bytes": 262144,
-        "ttfb_ms": 393.1,
+        "ttfb_ms": 442.1,
         "download_rounds_passed": 2,
-        "score": 66.28
-      }
-    },
-    {
-      "id": "0b325f5920b4d6bb382b",
-      "country": "US",
-      "protocol": "shadowsocks",
-      "server": "172.111.36.123",
-      "server_port": 19999,
-      "uri": "ss://YWVzLTI1Ni1nY206WlJwZ2FCZUd4dEVOSVhndmhwa1pCS3o5R25XUlMyZFljeDlPK2EyaXdOND0@172.111.36.123:19999#%F0%9F%87%BA%F0%9F%87%B8US_47%7C1.4MB%2Fs%7CM003-260806%20%5B336a94f5e9b9%5D",
-      "outbound": {
-        "type": "shadowsocks",
-        "tag": "kalani-0b325f5920b4",
-        "server": "172.111.36.123",
-        "server_port": 19999,
-        "method": "aes-256-gcm",
-        "password": "ZRpgaBeGxtENIXgvhpkZBKz9GnWRS2dYcx9O+a2iwN4="
-      },
-      "source": "previous-pool",
-      "exit_ip": "172.111.36.123",
-      "status": "verified",
-      "tested_at": "2026-11-25T16:39:56Z",
-      "metrics": {
-        "download_mbps": 11.307,
-        "upload_mbps": 2.607,
-        "download_bytes_each_round": 1048576,
-        "upload_bytes": 262144,
-        "ttfb_ms": 316.6,
-        "download_rounds_passed": 2,
-        "score": 65.75
+        "score": 62.48
       }
     },
     {
@@ -194,58 +251,44 @@
       "source": "previous-pool",
       "exit_ip": "149.40.57.133",
       "status": "verified",
-      "tested_at": "2026-11-25T16:39:56Z",
+      "tested_at": "2026-11-25T18:50:57Z",
       "metrics": {
-        "download_mbps": 8.93,
-        "upload_mbps": 4.289,
+        "download_mbps": 10.827,
+        "upload_mbps": 1.19,
         "download_bytes_each_round": 1048576,
         "upload_bytes": 262144,
-        "ttfb_ms": 480.6,
+        "ttfb_ms": 296.2,
         "download_rounds_passed": 2,
-        "score": 62.18
+        "score": 59.75
       }
     },
     {
-      "id": "21641b753b45c0e76b18",
-      "country": "US",
-      "protocol": "vless",
-      "server": "185.95.231.156",
-      "server_port": 443,
-      "uri": "vless://1f8cf47a-b66a-4916-979f-26edfcf44eea@185.95.231.156:443?flow=xtls-rprx-vision&fp=chrome&pbk=8eXftARun6KH38UZhuqIfPR1VF2DLS9RMBZEnF5k6To&security=reality&sid=a3a578ab&sni=www.apple.com&type=tcp#vless-1828372448",
+      "id": "3a6da06a3088527cedf2",
+      "country": "DE",
+      "protocol": "shadowsocks",
+      "server": "57.129.76.233",
+      "server_port": 19999,
+      "uri": "ss://YWVzLTI1Ni1nY206WlJwZ2FCZUd4dEVOSVhndmhwa1pCS3o5R25XUlMyZFljeDlPK2EyaXdOND0@57.129.76.233:19999#%F0%9F%87%A9%F0%9F%87%AADE_13%7C476KB%2Fs%7CM003-260806%20%5Bb381d6528038%5D",
       "outbound": {
-        "type": "vless",
-        "tag": "kalani-21641b753b45",
-        "server": "185.95.231.156",
-        "server_port": 443,
-        "uuid": "1f8cf47a-b66a-4916-979f-26edfcf44eea",
-        "flow": "xtls-rprx-vision",
-        "tls": {
-          "enabled": true,
-          "server_name": "www.apple.com",
-          "utls": {
-            "enabled": true,
-            "fingerprint": "chrome"
-          },
-          "reality": {
-            "enabled": true,
-            "public_key": "8eXftARun6KH38UZhuqIfPR1VF2DLS9RMBZEnF5k6To",
-            "short_id": "a3a578ab"
-          }
-        },
-        "packet_encoding": "xudp"
+        "type": "shadowsocks",
+        "tag": "kalani-3a6da06a3088",
+        "server": "57.129.76.233",
+        "server_port": 19999,
+        "method": "aes-256-gcm",
+        "password": "ZRpgaBeGxtENIXgvhpkZBKz9GnWRS2dYcx9O+a2iwN4="
       },
-      "source": "raw.githubusercontent.comtions/main/output/by-country/v2ray-base64-US.txt",
-      "exit_ip": "185.95.231.156",
+      "source": "raw.githubusercontent.com/Barabama/FreeNodes/main/nodes/merged.txt",
+      "exit_ip": "2001:41d0:721:e900::",
       "status": "verified",
-      "tested_at": "2026-11-25T16:40:21Z",
+      "tested_at": "2026-11-25T18:52:24Z",
       "metrics": {
-        "download_mbps": 10.076,
-        "upload_mbps": 2.704,
+        "download_mbps": 4.877,
+        "upload_mbps": 1.603,
         "download_bytes_each_round": 1048576,
         "upload_bytes": 262144,
-        "ttfb_ms": 370.6,
+        "ttfb_ms": 539.6,
         "download_rounds_passed": 2,
-        "score": 61.61
+        "score": 39.62
       }
     },
     {
@@ -280,15 +323,15 @@
       "source": "previous-pool",
       "exit_ip": "91.239.157.84",
       "status": "verified",
-      "tested_at": "2026-11-25T16:40:07Z",
+      "tested_at": "2026-11-25T18:51:07Z",
       "metrics": {
-        "download_mbps": 4.418,
-        "upload_mbps": 0.618,
+        "download_mbps": 4.488,
+        "upload_mbps": 0.565,
         "download_bytes_each_round": 1048576,
         "upload_bytes": 262144,
-        "ttfb_ms": 917.5,
+        "ttfb_ms": 894.6,
         "download_rounds_passed": 2,
-        "score": 33.45
+        "score": 33.61
       }
     },
     {
@@ -312,15 +355,15 @@
       "source": "previous-pool",
       "exit_ip": "50.7.95.228",
       "status": "verified",
-      "tested_at": "2026-11-25T16:40:01Z",
+      "tested_at": "2026-11-25T18:51:02Z",
       "metrics": {
-        "download_mbps": 12.728,
-        "upload_mbps": 2.818,
+        "download_mbps": 12.453,
+        "upload_mbps": 2.823,
         "download_bytes_each_round": 1048576,
         "upload_bytes": 262144,
-        "ttfb_ms": 337.0,
+        "ttfb_ms": 367.0,
         "download_rounds_passed": 2,
-        "score": 71.21
+        "score": 70.16
       }
     },
     {
@@ -344,15 +387,15 @@
       "source": "previous-pool",
       "exit_ip": "50.7.95.228",
       "status": "verified",
-      "tested_at": "2026-11-25T16:40:03Z",
+      "tested_at": "2026-11-25T18:51:05Z",
       "metrics": {
-        "download_mbps": 11.798,
-        "upload_mbps": 2.801,
+        "download_mbps": 12.392,
+        "upload_mbps": 2.782,
         "download_bytes_each_round": 1048576,
         "upload_bytes": 262144,
-        "ttfb_ms": 377.3,
+        "ttfb_ms": 358.8,
         "download_rounds_passed": 2,
-        "score": 67.8
+        "score": 69.86
       }
     },
     {
@@ -384,61 +427,18 @@
         },
         "packet_encoding": "xudp"
       },
-      "source": "raw.githubusercontent.comtions/main/output/by-country/v2ray-base64-NL.txt",
+      "source": "previous-pool",
       "exit_ip": "51.158.206.86",
       "status": "verified",
-      "tested_at": "2026-11-25T16:40:40Z",
+      "tested_at": "2026-11-25T18:51:08Z",
       "metrics": {
-        "download_mbps": 5.229,
-        "upload_mbps": 1.786,
+        "download_mbps": 5.451,
+        "upload_mbps": 1.671,
         "download_bytes_each_round": 1048576,
         "upload_bytes": 262144,
-        "ttfb_ms": 647.5,
+        "ttfb_ms": 635.6,
         "download_rounds_passed": 2,
-        "score": 40.97
-      }
-    },
-    {
-      "id": "e5ce6cbcb1bcc260ed75",
-      "country": "NL",
-      "protocol": "vless",
-      "server": "51.158.206.8",
-      "server_port": 23576,
-      "uri": "vless://48ff2b70-e180-582f-8866-d9a2edeed5f5@51.158.206.8:23576?flow=xtls-rprx-vision&fp=chrome&pbk=1y5h2FGWKXTJ9xLPCqPo6Mw7RxoZzh6fGkEQKNxpZ3s&security=reality&sid=01&sni=fuck.rkn&type=tcp#vless-1853341249",
-      "outbound": {
-        "type": "vless",
-        "tag": "kalani-e5ce6cbcb1bc",
-        "server": "51.158.206.8",
-        "server_port": 23576,
-        "uuid": "48ff2b70-e180-582f-8866-d9a2edeed5f5",
-        "flow": "xtls-rprx-vision",
-        "tls": {
-          "enabled": true,
-          "server_name": "fuck.rkn",
-          "utls": {
-            "enabled": true,
-            "fingerprint": "chrome"
-          },
-          "reality": {
-            "enabled": true,
-            "public_key": "1y5h2FGWKXTJ9xLPCqPo6Mw7RxoZzh6fGkEQKNxpZ3s",
-            "short_id": "01"
-          }
-        },
-        "packet_encoding": "xudp"
-      },
-      "source": "previous-pool",
-      "exit_ip": "51.158.206.8",
-      "status": "verified",
-      "tested_at": "2026-11-25T16:40:08Z",
-      "metrics": {
-        "download_mbps": 5.216,
-        "upload_mbps": 1.624,
-        "download_bytes_each_round": 1048576,
-        "upload_bytes": 262144,
-        "ttfb_ms": 682.3,
-        "download_rounds_passed": 2,
-        "score": 40.27
+        "score": 41.42
       }
     },
     {
@@ -473,15 +473,58 @@
       "source": "previous-pool",
       "exit_ip": "51.158.206.103",
       "status": "verified",
-      "tested_at": "2026-11-25T16:40:10Z",
+      "tested_at": "2026-11-25T18:51:13Z",
       "metrics": {
-        "download_mbps": 5.111,
-        "upload_mbps": 1.712,
+        "download_mbps": 5.314,
+        "upload_mbps": 1.756,
         "download_bytes_each_round": 1048576,
         "upload_bytes": 262144,
-        "ttfb_ms": 680.5,
+        "ttfb_ms": 689.4,
         "download_rounds_passed": 2,
-        "score": 40.2
+        "score": 41.0
+      }
+    },
+    {
+      "id": "e5ce6cbcb1bcc260ed75",
+      "country": "NL",
+      "protocol": "vless",
+      "server": "51.158.206.8",
+      "server_port": 23576,
+      "uri": "vless://48ff2b70-e180-582f-8866-d9a2edeed5f5@51.158.206.8:23576?flow=xtls-rprx-vision&fp=chrome&pbk=1y5h2FGWKXTJ9xLPCqPo6Mw7RxoZzh6fGkEQKNxpZ3s&security=reality&sid=01&sni=fuck.rkn&type=tcp#vless-1853341249",
+      "outbound": {
+        "type": "vless",
+        "tag": "kalani-e5ce6cbcb1bc",
+        "server": "51.158.206.8",
+        "server_port": 23576,
+        "uuid": "48ff2b70-e180-582f-8866-d9a2edeed5f5",
+        "flow": "xtls-rprx-vision",
+        "tls": {
+          "enabled": true,
+          "server_name": "fuck.rkn",
+          "utls": {
+            "enabled": true,
+            "fingerprint": "chrome"
+          },
+          "reality": {
+            "enabled": true,
+            "public_key": "1y5h2FGWKXTJ9xLPCqPo6Mw7RxoZzh6fGkEQKNxpZ3s",
+            "short_id": "01"
+          }
+        },
+        "packet_encoding": "xudp"
+      },
+      "source": "previous-pool",
+      "exit_ip": "51.158.206.8",
+      "status": "verified",
+      "tested_at": "2026-11-25T18:51:12Z",
+      "metrics": {
+        "download_mbps": 5.279,
+        "upload_mbps": 1.762,
+        "download_bytes_each_round": 1048576,
+        "upload_bytes": 262144,
+        "ttfb_ms": 672.3,
+        "download_rounds_passed": 2,
+        "score": 40.96
       }
     },
     {
@@ -502,27 +545,27 @@
       "source": "previous-pool",
       "exit_ip": "185.176.206.133",
       "status": "verified",
-      "tested_at": "2026-11-25T16:40:13Z",
+      "tested_at": "2026-11-25T18:51:13Z",
       "metrics": {
-        "download_mbps": 5.607,
-        "upload_mbps": 2.146,
+        "download_mbps": 6.079,
+        "upload_mbps": 2.157,
         "download_bytes_each_round": 1048576,
         "upload_bytes": 262144,
-        "ttfb_ms": 472.1,
+        "ttfb_ms": 456.9,
         "download_rounds_passed": 2,
-        "score": 44.09
+        "score": 45.81
       }
     },
     {
-      "id": "bfc379b4dae5f98adfd1",
+      "id": "30e77a96a941fe1ab1c6",
       "country": "FR",
       "protocol": "vless",
       "server": "152.228.139.33",
       "server_port": 35108,
-      "uri": "vless://81dc0b61-f9fe-4ad6-8b4e-b8c067b73712@152.228.139.33:35108?fp=random&pbk=X_lOw5Zz4SJBa1cRHV4dAq5msYE-ClY5-WNcBmBWRxg&security=reality&serviceName=grpc-common3&sid=52add08b86a5ccea&sni=www.nvidia.com&type=grpc#vless-1891687510",
+      "uri": "vless://81dc0b61-f9fe-4ad6-8b4e-b8c067b73712@152.228.139.33:35108?fp=firefox&pbk=X_lOw5Zz4SJBa1cRHV4dAq5msYE-ClY5-WNcBmBWRxg&security=reality&serviceName=grpc-common3&sid=52add08b86a5ccea&sni=www.nvidia.com&type=grpc#vless-1831094059",
       "outbound": {
         "type": "vless",
-        "tag": "kalani-bfc379b4dae5",
+        "tag": "kalani-30e77a96a941",
         "server": "152.228.139.33",
         "server_port": 35108,
         "uuid": "81dc0b61-f9fe-4ad6-8b4e-b8c067b73712",
@@ -531,7 +574,7 @@
           "server_name": "www.nvidia.com",
           "utls": {
             "enabled": true,
-            "fingerprint": "random"
+            "fingerprint": "firefox"
           },
           "reality": {
             "enabled": true,
@@ -547,18 +590,18 @@
         },
         "packet_encoding": "xudp"
       },
-      "source": "previous-pool",
+      "source": "raw.githubusercontent.comtions/main/output/by-country/v2ray-base64-FR.txt",
       "exit_ip": "152.228.139.33",
       "status": "verified",
-      "tested_at": "2026-11-25T16:40:15Z",
+      "tested_at": "2026-11-25T18:52:09Z",
       "metrics": {
-        "download_mbps": 11.197,
-        "upload_mbps": 2.527,
+        "download_mbps": 10.551,
+        "upload_mbps": 2.411,
         "download_bytes_each_round": 1048576,
         "upload_bytes": 262144,
-        "ttfb_ms": 429.9,
+        "ttfb_ms": 385.8,
         "download_rounds_passed": 2,
-        "score": 64.67
+        "score": 62.26
       }
     },
     {
@@ -595,18 +638,18 @@
         },
         "packet_encoding": "xudp"
       },
-      "source": "raw.githubusercontent.comtions/main/output/by-country/v2ray-base64-FR.txt",
+      "source": "previous-pool",
       "exit_ip": "152.228.139.33",
       "status": "verified",
-      "tested_at": "2026-11-25T16:41:00Z",
+      "tested_at": "2026-11-25T18:51:17Z",
       "metrics": {
-        "download_mbps": 10.57,
-        "upload_mbps": 2.269,
+        "download_mbps": 10.237,
+        "upload_mbps": 2.485,
         "download_bytes_each_round": 1048576,
         "upload_bytes": 262144,
-        "ttfb_ms": 371.7,
+        "ttfb_ms": 387.2,
         "download_rounds_passed": 2,
-        "score": 61.94
+        "score": 61.41
       }
     },
     {
@@ -627,57 +670,15 @@
       "source": "previous-pool",
       "exit_ip": "2001:41d0:250:b700::",
       "status": "verified",
-      "tested_at": "2026-11-25T16:40:17Z",
+      "tested_at": "2026-11-25T18:51:20Z",
       "metrics": {
-        "download_mbps": 5.145,
-        "upload_mbps": 1.617,
+        "download_mbps": 5.105,
+        "upload_mbps": 1.605,
         "download_bytes_each_round": 1048576,
         "upload_bytes": 262144,
-        "ttfb_ms": 549.6,
+        "ttfb_ms": 576.2,
         "download_rounds_passed": 2,
-        "score": 40.54
-      }
-    },
-    {
-      "id": "49fea812f9c1e257f3fb",
-      "country": "FR",
-      "protocol": "vless",
-      "server": "9.247.23.209",
-      "server_port": 443,
-      "uri": "vless://b9bfa54d-bc44-4592-a6d6-89a9665d286f@9.247.23.209:443?flow=xtls-rprx-vision&fp=chrome&pbk=SbVKOEMjK0sIlbwg4akyBg5mL5KZwwB-ed4eEE7YnRc&security=reality&sni=mother-earth.fyi&type=tcp#vless-1929489328",
-      "outbound": {
-        "type": "vless",
-        "tag": "kalani-49fea812f9c1",
-        "server": "9.247.23.209",
-        "server_port": 443,
-        "uuid": "b9bfa54d-bc44-4592-a6d6-89a9665d286f",
-        "flow": "xtls-rprx-vision",
-        "tls": {
-          "enabled": true,
-          "server_name": "mother-earth.fyi",
-          "utls": {
-            "enabled": true,
-            "fingerprint": "chrome"
-          },
-          "reality": {
-            "enabled": true,
-            "public_key": "SbVKOEMjK0sIlbwg4akyBg5mL5KZwwB-ed4eEE7YnRc"
-          }
-        },
-        "packet_encoding": "xudp"
-      },
-      "source": "raw.githubusercontent.comtions/main/output/by-country/v2ray-base64-FR.txt",
-      "exit_ip": "51.255.37.164",
-      "status": "verified",
-      "tested_at": "2026-11-25T16:40:56Z",
-      "metrics": {
-        "download_mbps": 4.808,
-        "upload_mbps": 1.621,
-        "download_bytes_each_round": 1048576,
-        "upload_bytes": 262144,
-        "ttfb_ms": 699.8,
-        "download_rounds_passed": 2,
-        "score": 38.79
+        "score": 40.26
       }
     },
     {
@@ -711,15 +712,58 @@
       "source": "previous-pool",
       "exit_ip": "51.255.37.164",
       "status": "verified",
-      "tested_at": "2026-11-25T16:40:20Z",
+      "tested_at": "2026-11-25T18:51:21Z",
       "metrics": {
-        "download_mbps": 4.864,
-        "upload_mbps": 1.348,
+        "download_mbps": 4.891,
+        "upload_mbps": 1.582,
         "download_bytes_each_round": 1048576,
         "upload_bytes": 262144,
-        "ttfb_ms": 691.5,
+        "ttfb_ms": 691.9,
         "download_rounds_passed": 2,
-        "score": 38.16
+        "score": 38.99
+      }
+    },
+    {
+      "id": "f492268340b3b364085c",
+      "country": "FR",
+      "protocol": "vless",
+      "server": "62.210.91.10",
+      "server_port": 23576,
+      "uri": "vless://48ff2b70-e180-582f-8866-d9a2edeed5f5@62.210.91.10:23576?flow=xtls-rprx-vision&fp=chrome&pbk=1y5h2FGWKXTJ9xLPCqPo6Mw7RxoZzh6fGkEQKNxpZ3s&security=reality&sid=01&sni=fuck.rkn&type=tcp#vless-1853341185",
+      "outbound": {
+        "type": "vless",
+        "tag": "kalani-f492268340b3",
+        "server": "62.210.91.10",
+        "server_port": 23576,
+        "uuid": "48ff2b70-e180-582f-8866-d9a2edeed5f5",
+        "flow": "xtls-rprx-vision",
+        "tls": {
+          "enabled": true,
+          "server_name": "fuck.rkn",
+          "utls": {
+            "enabled": true,
+            "fingerprint": "chrome"
+          },
+          "reality": {
+            "enabled": true,
+            "public_key": "1y5h2FGWKXTJ9xLPCqPo6Mw7RxoZzh6fGkEQKNxpZ3s",
+            "short_id": "01"
+          }
+        },
+        "packet_encoding": "xudp"
+      },
+      "source": "raw.githubusercontent.comtions/main/output/by-country/v2ray-base64-FR.txt",
+      "exit_ip": "62.210.91.10",
+      "status": "verified",
+      "tested_at": "2026-11-25T18:52:09Z",
+      "metrics": {
+        "download_mbps": 4.759,
+        "upload_mbps": 1.618,
+        "download_bytes_each_round": 1048576,
+        "upload_bytes": 262144,
+        "ttfb_ms": 721.5,
+        "download_rounds_passed": 2,
+        "score": 38.53
       }
     }
   ]
