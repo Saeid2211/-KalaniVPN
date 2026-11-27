@@ -1,421 +1,207 @@
-#!/usr/bin/env python3
-"""KalaniVPN3 security hardening installer. Applies a guarded security layer to the existing Java/Android project: - AES-256-GCM encrypted-at-rest storage backed by Android Keystore. - Secure migration of legacy plaintext server/config preferences. - HMAC-derived opaque server aliases (no raw hostnames/IPs in UI labels). - Opaque UI labels and removal of server endpoint display. - Detached P-256 ECDSA/SHA-256 signature verification for the public server pool. It does not change the active VPN engine, TUN ownership, transport selection, probe scheduling, server-selection rules, or connection lifecycle. Run from Code on the Go Terminal: python /storage/emulated/0/Download/KalaniVPN3_SECURITY_HARDENING_INSTALLER.py The installer backs up every changed file, verifies exact source markers, performs atomic replacements, and rolls back if any write verification fails. """
-from __future__ import annotations
+name: Kalani server pool
 
-import hashlib
-import os
-import shutil
-import stat
-import sys
-import tempfile
-from datetime import datetime
-from pathlib import Path
+on:
+  schedule:
+    - cron: '17,47 * * * *'
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/server-pool.yml'
+      - 'server-pool/collect.py'
+      - 'server-pool/sources.txt'
+      - 'server-pool/geoip_ipinfo.py'
+      - 'server-pool/test_geo_quorum.py'
+      - 'server-pool/apply_geoip_phase4.py'
 
-ROOT = Path(os.environ.get(
-    "KALANI_PROJECT_ROOT",
-    "/storage/emulated/0/CodeOnTheGoProjects/KalaniVPN3"
-))
-JAVA = ROOT / "app/src/main/java/com/example"
+permissions:
+  contents: write
 
-PUBLIC_KEY_B64 = "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEJJ3N8I2t6WWBh/t5JRF0NfoYrpuJO9gM2lZBntbrO0bN/KoCEIr5xOqQIbE4aZlhsX9sJMIAP292i0A+l+y7Zw=="
+concurrency:
+  group: kalani-server-pool
+  cancel-in-progress: false
 
-class PatchError(Exception):
-    pass
+jobs:
+  collect-and-verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 1
 
+      - name: Verify required Actions secrets are configured
+        env:
+          IPINFO_TOKEN: ${{ secrets.IPINFO_TOKEN }}
+          KALANI_POOL_SIGNING_KEY_B64: ${{ secrets.KALANI_POOL_SIGNING_KEY_B64 }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "$IPINFO_TOKEN" ]; then
+            echo "::error::Repository Actions secret IPINFO_TOKEN is missing. Add it in Settings > Secrets and variables > Actions."
+            exit 1
+          fi
+          if [ -z "$KALANI_POOL_SIGNING_KEY_B64" ]; then
+            echo "::error::Repository Actions secret KALANI_POOL_SIGNING_KEY_B64 is missing. Add the Base64-encoded PEM private key that matches the public key pinned in the Android app."
+            exit 1
+          fi
+          echo "Required Actions secrets are present. Their values will not be printed."
 
-def sha256(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
+      - name: Apply GeoIP Phase 4 adapter to collector
+        run: python3 server-pool/apply_geoip_phase4.py
 
+      - name: Test GeoIP quorum logic
+        working-directory: server-pool
+        run: python3 -m unittest -v test_geo_quorum.py
 
-def replace_once(src: str, old: str, new: str, label: str) -> str:
-    count = src.count(old)
-    if count != 1:
-        raise PatchError(f"{label}: expected exactly one matching block, found {count}")
-    return src.replace(old, new, 1)
+      - name: Install pinned sing-box 1.14.4
+        shell: bash
+        run: |
+          set -euo pipefail
+          URL='https://github.com/SagerNet/sing-box/releases/download/v1.14.4/sing-box-1.14.4-linux-amd64-glibc.tar.gz'
+          SHA='231e57c18378f780a08de832844a1ca9716e17a7bcf82964b350844d243c03ac'
+          curl -fsSL "$URL" -o /tmp/sing-box.tar.gz
+          printf '%s %s\n' "$SHA" /tmp/sing-box.tar.gz | sha256sum -c -
+          mkdir -p /tmp/sing-box-extract
+          tar -xzf /tmp/sing-box.tar.gz -C /tmp/sing-box-extract
+          BIN="$(find /tmp/sing-box-extract -type f -name sing-box -print -quit)"
+          test -n "$BIN"
+          sudo install -m 0755 "$BIN" /usr/local/bin/sing-box
+          sing-box version
 
+      - name: Install pinned unbox URI converter
+        shell: bash
+        run: |
+          set -euo pipefail
+          URL='https://github.com/aceberg/unbox/releases/download/v1.1.2/unbox_1.1.2_linux_amd64.tar.gz'
+          SHA='b4f24278dcf28913aaa09774746fc66a37f99cf90205e0b46193258b53c3a017'
+          curl -fsSL "$URL" -o /tmp/unbox.tar.gz
+          printf '%s %s\n' "$SHA" /tmp/unbox.tar.gz | sha256sum -c -
+          mkdir -p /tmp/unbox-extract
+          tar -xzf /tmp/unbox.tar.gz -C /tmp/unbox-extract
+          BIN="$(find /tmp/unbox-extract -type f -name unbox -print -quit)"
+          test -n "$BIN"
+          sudo install -m 0755 "$BIN" /usr/local/bin/unbox
+          unbox examples >/dev/null
 
-def replace_count(src: str, old: str, new: str, expected: int, label: str) -> str:
-    count = src.count(old)
-    if count != expected:
-        raise PatchError(f"{label}: expected {expected} matching blocks, found {count}")
-    return src.replace(old, new)
+      - name: Record the existing Pool fingerprint
+        id: pool-before
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -s server-pool/server-pool.json ]; then
+            printf 'sha=%s\n' "$(git hash-object server-pool/server-pool.json)" >> "$GITHUB_OUTPUT"
+          else
+            printf 'sha=missing\n' >> "$GITHUB_OUTPUT"
+          fi
 
+      - name: Collect and test public candidates
+        env:
+          MAX_CANDIDATES: '120'
+          MAX_WORKERS: '4'
+          SING_BOX_BIN: sing-box
+          UNBOX_BIN: unbox
+          IPINFO_TOKEN: ${{ secrets.IPINFO_TOKEN }}
+        run: python3 server-pool/collect.py
 
-def write_atomic(path: Path, data: bytes) -> None:
-    tmp = path.with_name(path.name + ".kalani_security.tmp")
-    try:
-        with open(tmp, "wb") as f:
-            f.write(data)
-            f.flush()
-            os.fsync(f.fileno())
-        try:
-            os.chmod(tmp, stat.S_IMODE(path.stat().st_mode))
-        except OSError:
-            pass
-        os.replace(tmp, path)
-    finally:
-        try:
-            if tmp.exists():
-                tmp.unlink()
-        except OSError:
-            pass
+      - name: Sign the verified server pool
+        env:
+          KALANI_POOL_SIGNING_KEY_B64: ${{ secrets.KALANI_POOL_SIGNING_KEY_B64 }}
+          POOL_BEFORE_SHA: ${{ steps.pool-before.outputs.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          POOL='server-pool/server-pool.json'
+          SIGNATURE='server-pool/server-pool.json.sig'
+          test -s "$POOL" || { echo '::error::No server pool JSON exists to sign.'; exit 1; }
 
+          KEY_FILE="$(mktemp)"
+          PUBLIC_PEM="$(mktemp)"
+          PUBLIC_DER="$(mktemp)"
+          SIGNATURE_DER="$(mktemp)"
+          trap 'rm -f "$KEY_FILE" "$PUBLIC_PEM" "$PUBLIC_DER" "$SIGNATURE_DER"' EXIT
+          umask 077
 
-SECURE_STORE = r'''package com.example.kalanivpn; import android.content.Context; import android.content.SharedPreferences; import android.security.keystore.KeyGenParameterSpec; import android.security.keystore.KeyProperties; import android.util.Base64; import java.io.ByteArrayOutputStream; import java.nio.ByteBuffer; import java.nio.charset.StandardCharsets; import java.security.Key; import java.security.KeyStore; import java.util.Locale; import javax.crypto.Cipher; import javax.crypto.KeyGenerator; import javax.crypto.Mac; import javax.crypto.SecretKey; import javax.crypto.spec.GCMParameterSpec; /** * App-private encrypted storage for server credentials and sing-box configs. * AES-256-GCM keys are generated and kept inside Android Keystore. * Values are authenticated against their logical namespace and key name. */ public final class KalaniSecureStore { private static final String TAG = "KALANI_SECURE_STORE"; private static final String KEYSTORE = "AndroidKeyStore"; private static final String STORE_PREFS = "kalani_secure_store_v1"; private static final String AES_ALIAS = "kalani_secure_aes_gcm_v1"; private static final String HMAC_ALIAS = "kalani_node_alias_hmac_v1"; private static final Object LOCK = new Object(); private static final int IV_BYTES = 12; private static final int TAG_BITS = 128; private KalaniSecureStore() { } private static String storageKey(String namespace, String key) { return namespace + "::" + key; } private static byte[] aad(String namespace, String key) { return ("KalaniVPN\u0000" + namespace + "\u0000" + key) .getBytes(StandardCharsets.UTF_8); } public static String getString( Context context, String namespace, String key, String defaultValue) { if (context == null || namespace == null || key == null) return defaultValue; Context app = context.getApplicationContext(); synchronized (LOCK) { SharedPreferences secure = app.getSharedPreferences(STORE_PREFS, Context.MODE_PRIVATE); String encoded = secure.getString(storageKey(namespace, key), null); if (encoded != null) { try { String value = decrypt(app, namespace, key, encoded); app.getSharedPreferences(namespace, Context.MODE_PRIVATE) .edit().remove(key).commit(); return value; } catch (Exception invalidCiphertext) { // Authentication/key loss invalidates this cache entry. Never // fall back to a stale plaintext copy after ciphertext exists. secure.edit().remove(storageKey(namespace, key)).commit(); app.getSharedPreferences(namespace, Context.MODE_PRIVATE) .edit().remove(key).commit(); android.util.Log.w(TAG, "Encrypted cache entry rejected; fresh data is required"); return defaultValue; } } // One-time migration: encrypt legacy values before deleting plaintext. SharedPreferences legacy = app.getSharedPreferences(namespace, Context.MODE_PRIVATE); String old = legacy.getString(key, null); if (old == null) return defaultValue; if (!putEncryptedLocked(app, namespace, key, old)) { // Do not keep sensitive legacy values in clear text when the // device Keystore cannot encrypt them. Discard this cache entry. legacy.edit().remove(key).commit(); return defaultValue; } legacy.edit().remove(key).commit(); return old; } } public static boolean putString( Context context, String namespace, String key, String value) { if (context == null || namespace == null || key == null || value == null) return false; Context app = context.getApplicationContext(); synchronized (LOCK) { if (!putEncryptedLocked(app, namespace, key, value)) { app.getSharedPreferences(namespace, Context.MODE_PRIVATE) .edit().remove(key).commit(); return false; } // Remove an older plaintext copy only after ciphertext is committed. app.getSharedPreferences(namespace, Context.MODE_PRIVATE) .edit().remove(key).commit(); return true; } } public static void removeString(Context context, String namespace, String key) { if (context == null || namespace == null || key == null) return; Context app = context.getApplicationContext(); synchronized (LOCK) { app.getSharedPreferences(STORE_PREFS, Context.MODE_PRIVATE) .edit().remove(storageKey(namespace, key)).commit(); app.getSharedPreferences(namespace, Context.MODE_PRIVATE) .edit().remove(key).commit(); } } private static boolean putEncryptedLocked( Context context, String namespace, String key, String value) { try { Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding"); cipher.init(Cipher.ENCRYPT_MODE, getAesKey()); cipher.updateAAD(aad(namespace, key)); byte[] encrypted = cipher.doFinal(value.getBytes(StandardCharsets.UTF_8)); byte[] iv = cipher.getIV(); if (iv == null || iv.length != IV_BYTES) return false; ByteArrayOutputStream out = new ByteArrayOutputStream(2 + iv.length + encrypted.length); out.write(1); // payload format version out.write(iv.length); out.write(iv); out.write(encrypted); String encoded = Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP); return context.getSharedPreferences(STORE_PREFS, Context.MODE_PRIVATE) .edit().putString(storageKey(namespace, key), encoded).commit(); } catch (Exception error) { android.util.Log.e(TAG, "Could not encrypt an app-private cache value"); return false; } } private static String decrypt( Context context, String namespace, String key, String encoded) throws Exception { byte[] payload = Base64.decode(encoded, Base64.NO_WRAP); if (payload.length < 2 + IV_BYTES + 16 || payload[0] != 1) { throw new IllegalArgumentException("Invalid encrypted cache format"); } int ivLength = payload[1] & 0xff; if (ivLength != IV_BYTES || payload.length <= 2 + ivLength + 15) { throw new IllegalArgumentException("Invalid AES-GCM payload"); } byte[] iv = new byte[ivLength]; System.arraycopy(payload, 2, iv, 0, ivLength); byte[] encrypted = new byte[payload.length - 2 - ivLength]; System.arraycopy(payload, 2 + ivLength, encrypted, 0, encrypted.length); Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding"); cipher.init(Cipher.DECRYPT_MODE, getAesKey(), new GCMParameterSpec(TAG_BITS, iv)); cipher.updateAAD(aad(namespace, key)); return new String(cipher.doFinal(encrypted), StandardCharsets.UTF_8); } private static SecretKey getAesKey() throws Exception { KeyStore store = KeyStore.getInstance(KEYSTORE); store.load(null); Key existing = store.getKey(AES_ALIAS, null); if (existing instanceof SecretKey) return (SecretKey) existing; KeyGenerator generator = KeyGenerator.getInstance( KeyProperties.KEY_ALGORITHM_AES, KEYSTORE); KeyGenParameterSpec spec = new KeyGenParameterSpec.Builder( AES_ALIAS, KeyProperties.PURPOSE_ENCRYPT | KeyProperties.PURPOSE_DECRYPT) .setBlockModes(KeyProperties.BLOCK_MODE_GCM) .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE) .setKeySize(256) .setRandomizedEncryptionRequired(true) .build(); generator.init(spec); return generator.generateKey(); } /** Stable only for this installation; reveals no host, address or credential. */ public static String opaqueId(Context context, String seed) { if (context == null || seed == null) return "NODE-UNKNOWN"; try { synchronized (LOCK) { KeyStore store = KeyStore.getInstance(KEYSTORE); store.load(null); Key existing = store.getKey(HMAC_ALIAS, null); SecretKey key; if (existing instanceof SecretKey) { key = (SecretKey) existing; } else { KeyGenerator generator = KeyGenerator.getInstance( KeyProperties.KEY_ALGORITHM_HMAC_SHA256, KEYSTORE); KeyGenParameterSpec spec = new KeyGenParameterSpec.Builder( HMAC_ALIAS, KeyProperties.PURPOSE_SIGN | KeyProperties.PURPOSE_VERIFY) .setDigests(KeyProperties.DIGEST_SHA256) .setKeySize(256) .build(); generator.init(spec); key = generator.generateKey(); } Mac mac = Mac.getInstance("HmacSHA256"); mac.init(key); byte[] digest = mac.doFinal(seed.getBytes(StandardCharsets.UTF_8)); StringBuilder out = new StringBuilder("NODE-"); for (int i = 0; i < 12; i++) { out.append(String.format(Locale.US, "%02X", digest[i] & 0xff)); } return out.toString(); } } catch (Exception error) { return "NODE-LOCAL"; } } } '''
+          printf '%s' "$KALANI_POOL_SIGNING_KEY_B64" | base64 --decode > "$KEY_FILE"
+          openssl pkey -in "$KEY_FILE" -noout >/dev/null
+          openssl pkey -in "$KEY_FILE" -pubout -out "$PUBLIC_PEM"
+          openssl pkey -in "$KEY_FILE" -pubout -outform DER -out "$PUBLIC_DER"
 
-POOL_SIGNATURE = r'''package com.example.kalanivpn; import android.util.Base64; import java.nio.charset.StandardCharsets; import java.security.KeyFactory; import java.security.PublicKey; import java.security.Signature; import java.security.spec.X509EncodedKeySpec; /** Verifies the detached SHA-256/ECDSA signature of the exact published Pool bytes. */ public final class KalaniPoolSignature { // P-256 SubjectPublicKeyInfo (DER), pinned in the APK. private static final String PUBLIC_KEY_DER_B64 = "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEJJ3N8I2t6WWBh/t5JRF0NfoYrpuJO9gM2lZBntbrO0bN/KoCEIr5xOqQIbE4aZlhsX9sJMIAP292i0A+l+y7Zw=="; private KalaniPoolSignature() { } public static boolean verify(String document, String signatureBase64) { if (document == null || signatureBase64 == null || document.isEmpty() || signatureBase64.trim().isEmpty()) return false; try { byte[] publicDer = Base64.decode(PUBLIC_KEY_DER_B64, Base64.DEFAULT); byte[] signatureBytes = Base64.decode(signatureBase64.trim(), Base64.DEFAULT); PublicKey publicKey = KeyFactory.getInstance("EC") .generatePublic(new X509EncodedKeySpec(publicDer)); Signature verifier = Signature.getInstance("SHA256withECDSA"); verifier.initVerify(publicKey); verifier.update(document.getBytes(StandardCharsets.UTF_8)); return verifier.verify(signatureBytes); } catch (Exception invalidSignature) { return false; } } } '''
+          ACTUAL_PUBLIC_KEY_B64="$(base64 --wrap=0 "$PUBLIC_DER")"
+          EXPECTED_PUBLIC_KEY_B64='MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEJJ3N8I2t6WWBh/t5JRF0NfoYrpuJO9gM2lZBntbrO0bN/KoCEIr5xOqQIbE4aZlhsX9sJMIAP292i0A+l+y7Zw=='
+          if [ "$ACTUAL_PUBLIC_KEY_B64" != "$EXPECTED_PUBLIC_KEY_B64" ]; then
+            echo '::error::Signing key does not match the P-256 public key pinned in the Android app. No signature was published.'
+            exit 1
+          fi
 
+          # Reuse a valid signature only when the collector left the Pool
+          # unchanged. Never use this signing key to bless an old unsigned Pool:
+          # if there is no valid signature, a fresh collector output is required.
+          CURRENT_POOL_SHA="$(git hash-object "$POOL")"
+          NEEDS_SIGNING=1
+          EXISTING_SIGNATURE_VALID=0
+          if [ -s "$SIGNATURE" ] \
+            && base64 --decode "$SIGNATURE" > "$SIGNATURE_DER" 2>/dev/null \
+            && openssl dgst -sha256 -verify "$PUBLIC_PEM" -signature "$SIGNATURE_DER" "$POOL" >/dev/null 2>&1; then
+            EXISTING_SIGNATURE_VALID=1
+          fi
 
-def patch_pool_client(src: str) -> str:
-    src = replace_once(
-        src,
-        ' private static final String PREFS_KEY = "pool_json";\n',
-        ' private static final String PREFS_KEY = "signed_pool_envelope_v1";\n'
-        ' private static final String LEGACY_PREFS_KEY = "pool_json";\n'
-        ' private static final String POOL_SIGNATURE_URL =\n'
-        ' "https://raw.githubusercontent.com/Saeid2211/-KalaniVPN/main/server-pool/server-pool.json.sig";\n',
-        "Pool cache key"
-    )
+          if [ "$CURRENT_POOL_SHA" = "$POOL_BEFORE_SHA" ]; then
+            if [ "$EXISTING_SIGNATURE_VALID" -eq 1 ]; then
+              NEEDS_SIGNING=0
+              echo 'Pool JSON is unchanged and its existing signature is valid.'
+            else
+              echo '::error::Collector did not produce a fresh Pool. Refusing to sign an unchanged unsigned or invalid legacy Pool.'
+              exit 1
+            fi
+          fi
 
-    old_fetch = ''' String raw = downloadDocument(); Snapshot snapshot = validateDocument(raw, false); SharedPreferences prefs = context.getApplicationContext() .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE); boolean saved = prefs.edit() .putString(PREFS_KEY, raw) .commit(); if (!saved) { Log.w(TAG, "Validated Pool could not be written to local cache"); } '''
-    new_fetch = ''' String raw = downloadDocument(); String signature = downloadSignature(); if (!KalaniPoolSignature.verify(raw, signature)) { throw new Exception("Server Pool digital signature verification failed"); } Snapshot snapshot = validateDocument(raw, false); JSONObject envelope = new JSONObject() .put("document", raw) .put("signature", signature); boolean saved = KalaniSecureStore.putString( context, PREFS_NAME, PREFS_KEY, envelope.toString()); if (!saved) { Log.w(TAG, "Signed Pool validated but encrypted local cache write failed"); } else { // Remove the previous raw, unsigned Pool cache after the signed // envelope is safely committed under the Keystore-backed key. context.getApplicationContext().getSharedPreferences( PREFS_NAME, Context.MODE_PRIVATE) .edit().remove(LEGACY_PREFS_KEY).commit(); } '''
-    src = replace_once(src, old_fetch, new_fetch, "Pool fresh-fetch storage")
+          if [ "$NEEDS_SIGNING" -eq 1 ]; then
+            openssl dgst -sha256 -sign "$KEY_FILE" -out "$SIGNATURE_DER" "$POOL"
+            openssl dgst -sha256 -verify "$PUBLIC_PEM" -signature "$SIGNATURE_DER" "$POOL"
+            base64 --wrap=0 "$SIGNATURE_DER" > "$SIGNATURE"
+            test -s "$SIGNATURE"
+            echo 'Verified detached P-256 ECDSA/SHA-256 signature generated.'
+          fi
 
-    old_cache = ''' SharedPreferences prefs = context.getApplicationContext() .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE); String raw = prefs.getString(PREFS_KEY, null); if (raw == null || raw.trim().isEmpty()) { throw new Exception("Server Pool cache is empty"); } return validateDocument(raw, true); '''
-    new_cache = ''' context.getApplicationContext().getSharedPreferences( PREFS_NAME, Context.MODE_PRIVATE) .edit().remove(LEGACY_PREFS_KEY).commit(); String envelopeRaw = KalaniSecureStore.getString( context, PREFS_NAME, PREFS_KEY, null); if (envelopeRaw == null || envelopeRaw.trim().isEmpty()) { throw new Exception("No signed encrypted Server Pool cache is available"); } JSONObject envelope = new JSONObject(envelopeRaw); String raw = envelope.optString("document", ""); String signature = envelope.optString("signature", ""); if (!KalaniPoolSignature.verify(raw, signature)) { KalaniSecureStore.removeString(context, PREFS_NAME, PREFS_KEY); throw new Exception("Cached Server Pool digital signature is invalid"); } return validateDocument(raw, true); '''
-    src = replace_once(src, old_cache, new_cache, "Pool cached read")
+      - name: Publish verified pool and signature
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -s server-pool/server-pool.json ] || [ ! -s server-pool/server-pool.json.sig ]; then
+            echo 'Pool JSON or detached signature is missing; nothing will be published.'
+            exit 1
+          fi
 
-    marker = ' private static String downloadDocument() throws Exception {\n'
-    signature_method = r''' private static String downloadSignature() throws Exception { URL url = new URL(POOL_SIGNATURE_URL); HttpURLConnection connection = null; try { connection = (HttpURLConnection) url.openConnection(); if (!(connection instanceof HttpsURLConnection)) { throw new Exception("Pool signature transport is not HTTPS"); } connection.setRequestMethod("GET"); connection.setConnectTimeout(12000); connection.setReadTimeout(12000); connection.setUseCaches(false); connection.setInstanceFollowRedirects(true); connection.setRequestProperty("User-Agent", "KalaniVPN-Android"); connection.setRequestProperty("Accept", "text/plain"); if (connection.getResponseCode() != HttpURLConnection.HTTP_OK) { throw new Exception("Pool signature HTTP request failed"); } if (!(connection.getURL().getProtocol().equalsIgnoreCase("https"))) { throw new Exception("Pool signature redirected outside HTTPS"); } try (InputStream input = connection.getInputStream(); ByteArrayOutputStream output = new ByteArrayOutputStream()) { byte[] buffer = new byte[512]; int count; int total = 0; while ((count = input.read(buffer)) != -1) { total += count; if (total > 2048) throw new Exception("Pool signature exceeds size limit"); output.write(buffer, 0, count); } String signature = new String( output.toByteArray(), StandardCharsets.US_ASCII).trim(); if (signature.length() < 40 || signature.length() > 1024) { throw new Exception("Pool signature format is invalid"); } return signature; } } finally { if (connection != null) connection.disconnect(); } } '''
-    src = replace_once(src, marker, signature_method + marker, "Pool signature download insertion")
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
 
-    # The unsigned legacy cache key must never be treated as a valid signed Pool.
-    return src
+          # Refresh main before publishing. If another push wins the race,
+          # retry on top of the new remote commit without discarding our pool.
+          max_attempts=4
+          for attempt in $(seq 1 "$max_attempts"); do
+            echo "Publish attempt $attempt/$max_attempts"
 
+            git fetch origin main
+            git reset --mixed origin/main
+            git add server-pool/server-pool.json server-pool/server-pool.json.sig
 
-def patch_main(src: str) -> str:
-    # Delete both pre-migration plaintext snapshots and any secure-store entries.
-    old_clear = ''' getSharedPreferences("kalani_active_servers", MODE_PRIVATE) .edit().remove("servers_json").apply(); getSharedPreferences("kalani_ready_pool", MODE_PRIVATE) .edit().remove("servers_json").apply(); '''
-    new_clear = ''' KalaniSecureStore.removeString( this, "kalani_active_servers", "servers_json"); KalaniSecureStore.removeString( this, "kalani_ready_pool", "servers_json"); '''
-    src = replace_once(src, old_clear, new_clear, "Legacy server snapshot cleanup")
+            if git diff --cached --quiet; then
+              echo 'Pool and signature did not change; no commit is needed.'
+              exit 0
+            fi
 
-    old_active_read = ''' android.content.SharedPreferences activePrefs = getSharedPreferences("kalani_active_servers", MODE_PRIVATE); try { JSONArray active = new JSONArray( activePrefs.getString("servers_json", "[]") ); '''
-    new_active_read = ''' try { JSONArray active = new JSONArray(KalaniSecureStore.getString( this, "kalani_active_servers", "servers_json", "[]")); '''
-    src = replace_once(src, old_active_read, new_active_read, "Active server cache read")
+            git commit -m 'Update verified Kalani server pool and signature'
 
-    old_active_write = ''' getSharedPreferences("kalani_active_servers", MODE_PRIVATE) .edit() .putString("servers_json", output.toString()) .apply(); '''
-    new_active_write = ''' if (!KalaniSecureStore.putString( this, "kalani_active_servers", "servers_json", output.toString())) { android.util.Log.e("KALANI_SECURE_STORE", "Active server cache encryption failed"); } '''
-    src = replace_once(src, old_active_write, new_active_write, "Active server cache write")
+            if git push origin HEAD:main; then
+              echo 'Verified server pool and detached signature published successfully.'
+              exit 0
+            fi
 
-    old_ready_decl = ''' android.content.SharedPreferences prefs = getSharedPreferences("kalani_ready_pool", MODE_PRIVATE); synchronized (standbyLock) { '''
-    new_ready_decl = ''' synchronized (standbyLock) { '''
-    src = replace_once(src, old_ready_decl, new_ready_decl, "Ready pool storage declaration")
+            echo "::warning::Push attempt $attempt failed; refreshing main before retry."
+            sleep "$((attempt * 2))"
+          done
 
-    old_ready_read = ''' JSONArray old = new JSONArray( prefs.getString("servers_json", "[]") ); '''
-    new_ready_read = ''' JSONArray old = new JSONArray(KalaniSecureStore.getString( this, "kalani_ready_pool", "servers_json", "[]")); '''
-    src = replace_once(src, old_ready_read, new_ready_read, "Ready pool cache read")
-
-    old_ready_write = ''' prefs.edit() .putString("servers_json", output.toString()) .apply(); '''
-    new_ready_write = ''' if (!KalaniSecureStore.putString( this, "kalani_ready_pool", "servers_json", output.toString())) { android.util.Log.e("KALANI_SECURE_STORE", "Ready pool cache encryption failed"); } '''
-    src = replace_once(src, old_ready_write, new_ready_write, "Ready pool cache write")
-
-    old_restore_decl = ''' android.content.SharedPreferences prefs = getSharedPreferences("kalani_ready_pool", MODE_PRIVATE); String raw = prefs.getString("servers_json", "[]"); '''
-    new_restore_decl = ''' String raw = KalaniSecureStore.getString( this, "kalani_ready_pool", "servers_json", "[]"); '''
-    src = replace_once(src, old_restore_decl, new_restore_decl, "Standby pool restore")
-
-    # Encrypt verified exit metadata. These values may reveal the selected exit address.
-    old_exit_save = ''' getSharedPreferences( "kalani_verified_exit_metadata", MODE_PRIVATE) .edit() .putString(key + "_ip", server.exitIp) .putString(key + "_country", server.exitCountry) .putString(key + "_flag", server.exitFlag) .apply(); '''
-    new_exit_save = ''' boolean saved = KalaniSecureStore.putString( this, "kalani_verified_exit_metadata", key + "_ip", server.exitIp); saved &= KalaniSecureStore.putString( this, "kalani_verified_exit_metadata", key + "_country", server.exitCountry); saved &= KalaniSecureStore.putString( this, "kalani_verified_exit_metadata", key + "_flag", server.exitFlag); if (!saved) android.util.Log.w( "KALANI_SECURE_STORE", "Verified exit metadata could not be encrypted"); '''
-    src = replace_once(src, old_exit_save, new_exit_save, "Verified exit metadata save")
-
-    old_exit_restore = ''' android.content.SharedPreferences prefs = getSharedPreferences( "kalani_verified_exit_metadata", MODE_PRIVATE); String ip = prefs.getString(key + "_ip", ""); if (ip == null || !isValidPublicIpv4(ip)) return; server.exitIp = ip; server.exitCountry = prefs.getString( key + "_country", "Location unavailable"); server.exitFlag = prefs.getString(key + "_flag", "🌐"); '''
-    new_exit_restore = ''' String ip = KalaniSecureStore.getString( this, "kalani_verified_exit_metadata", key + "_ip", ""); if (ip == null || !isValidPublicIpv4(ip)) return; server.exitIp = ip; server.exitCountry = KalaniSecureStore.getString( this, "kalani_verified_exit_metadata", key + "_country", "Location unavailable"); server.exitFlag = KalaniSecureStore.getString( this, "kalani_verified_exit_metadata", key + "_flag", "🌐"); '''
-    src = replace_once(src, old_exit_restore, new_exit_restore, "Verified exit metadata restore")
-
-    # Recent connection identifiers and metadata are encrypted. The raw endpoint/name
-    # is intentionally not persisted or rendered.
-    old_recent_save = ''' getSharedPreferences( "kalani_recent_connection", MODE_PRIVATE) .edit() .putString("server_key", key) .putString("server_name", server.name == null ? "" : server.name) .putString("country", server.country == null ? "" : server.country) .putString("flag", server.flag == null ? "🌐" : server.flag) .putString("server_ip", server.ip == null ? "" : server.ip) .putLong("connected_at", System.currentTimeMillis()) .apply(); '''
-    new_recent_save = ''' boolean saved = KalaniSecureStore.putString( this, "kalani_recent_connection", "server_key", key); saved &= KalaniSecureStore.putString( this, "kalani_recent_connection", "country", server.country == null ? "" : server.country); saved &= KalaniSecureStore.putString( this, "kalani_recent_connection", "flag", server.flag == null ? "🌐" : server.flag); saved &= KalaniSecureStore.putString( this, "kalani_recent_connection", "connected_at", String.valueOf(System.currentTimeMillis())); KalaniSecureStore.removeString(this, "kalani_recent_connection", "server_name"); KalaniSecureStore.removeString(this, "kalani_recent_connection", "server_ip"); if (!saved) android.util.Log.w( "KALANI_SECURE_STORE", "Recent connection record could not be encrypted"); '''
-    src = replace_once(src, old_recent_save, new_recent_save, "Recent connection save")
-
-    old_recent_read = ''' android.content.SharedPreferences prefs = getSharedPreferences( "kalani_recent_connection", MODE_PRIVATE); String key = prefs.getString("server_key", ""); String name = prefs.getString("server_name", ""); String country = prefs.getString("country", ""); String flag = prefs.getString("flag", "🌐"); String ip = prefs.getString("server_ip", ""); if (key.isEmpty() || name.isEmpty()) { '''
-    new_recent_read = ''' KalaniSecureStore.removeString(this, "kalani_recent_connection", "server_name"); KalaniSecureStore.removeString(this, "kalani_recent_connection", "server_ip"); String key = KalaniSecureStore.getString( this, "kalani_recent_connection", "server_key", ""); String country = KalaniSecureStore.getString( this, "kalani_recent_connection", "country", ""); String flag = KalaniSecureStore.getString( this, "kalani_recent_connection", "flag", "🌐"); int recentIndex = findRecentServerIndex(key); String name = recentIndex >= 0 ? displayServerAlias(servers.get(recentIndex)) : (country.isEmpty() ? "Saved secure route" : country + " · Saved route"); if (key.isEmpty()) { '''
-    src = replace_once(src, old_recent_read, new_recent_read, "Recent connection restore")
-    src = replace_once(
-        src,
-        ''' int recentIndex = findRecentServerIndex(key); TextView reconnect = text( ''',
-        ''' TextView reconnect = text( ''',
-        "Recent connection duplicate index declaration"
-    )
-
-    # The recent card no longer displays endpoint IPs.
-    old_recent_ip = ''' if (!ip.isEmpty()) { TextView ipView = text("IP: " + ip, 9, MUTED, false); details.addView(ipView); } '''
-    src = replace_once(src, old_recent_ip, '', "Recent card endpoint display")
-
-    # Replace visible raw server names and endpoint addresses with an installation-specific alias.
-    old_alias_anchor = ''' private String getCountryGroupKey(Server server) { if (server == null) return "Location unavailable"; String country = canonicalTargetCountry(server.country); return country.isEmpty() ? "Location unavailable" : country; } '''
-    new_alias_block = old_alias_anchor + ''' /** Opaque display label: does not expose host, IP, source tag or credentials. */ private String displayServerAlias(Server server) { if (server == null || server.outbound == null) return "NODE-UNKNOWN"; String country = canonicalTargetCountry(server.country); String countryCode = countryCodeForAlias(country); String seed = canonicalServerKey(server.outbound.toString()); String opaque = KalaniSecureStore.opaqueId(this, seed); return countryCode + " · " + opaque; } private String countryCodeForAlias(String country) { if ("US".equals(country)) return "US"; if ("DE".equals(country)) return "DE"; if ("NL".equals(country)) return "NL"; if ("GB".equals(country)) return "GB"; if ("FR".equals(country)) return "FR"; return "--"; } '''
-    src = replace_once(src, old_alias_anchor, new_alias_block, "Opaque alias helper insertion")
-
-    # Existing country labels are preserved; only raw endpoint-identifying labels are hidden.
-    src = replace_once(
-        src,
-        ''' TextView name = text( server.name == null || server.name.isEmpty() ? "Server " + (index + 1) : server.name, 12, WHITE, true); ''',
-        ''' TextView name = text( displayServerAlias(server), 12, WHITE, true); ''',
-        "Server card label"
-    )
-    src = replace_once(
-        src,
-        ''' TextView ip = text( server.ip == null || server.ip.isEmpty() ? "IP: resolving..." : "IP: " + server.ip, 9, MUTED, false); ''',
-        ''' TextView ip = text("Endpoint protected", 9, MUTED, false); ''',
-        "Server card endpoint line"
-    )
-    src = replace_once(
-        src,
-        ''' detailServerName.setText( server.name == null ? "Unnamed server" : server.name); ''',
-        ''' detailServerName.setText(displayServerAlias(server)); ''',
-        "Server detail name"
-    )
-    old_detail_ip = ''' detailIp.setText( server.ip == null || server.ip.isEmpty() || server.ip.equals("IP unavailable") ? "Server IP: resolving..." : "Server IP: " + server.ip); '''
-    src = replace_once(src, old_detail_ip,
-                       ''' detailIp.setText("Server endpoint: protected"); ''',
-                       "Server detail endpoint")
-    src = replace_once(
-        src,
-        ' selectedLabel.setText("SELECTED: " + server.name);\n',
-        ' selectedLabel.setText("SELECTED: " + displayServerAlias(server));\n',
-        "Selected label on tap"
-    )
-    src = replace_once(
-        src,
-        ''' selectedLabel.setText( "SELECTED: " + servers.get(index).name); ''',
-        ''' selectedLabel.setText( "SELECTED: " + displayServerAlias(servers.get(index))); ''',
-        "Selected label on recent reconnect"
-    )
-    src = replace_once(
-        src,
-        ''' protectedServerName.setText( server == null ? "No server selected" : server.name); ''',
-        ''' protectedServerName.setText( server == null ? "No server selected" : displayServerAlias(server)); ''',
-        "Protected server label"
-    )
-    src = replace_once(
-        src,
-        ''' selectedLabel.setText( "SELECTED ROUTE: " + servers.get(best).name); ''',
-        ''' selectedLabel.setText( "SELECTED ROUTE: " + displayServerAlias(servers.get(best))); ''',
-        "Fastest route selected label"
-    )
-    src = replace_once(
-        src,
-        ''' selectedLabel.setText( "SELECTED: " + servers.get(bestIndex).name ); ''',
-        ''' selectedLabel.setText( "SELECTED: " + displayServerAlias(servers.get(bestIndex)) ); ''',
-        "Country route selected label"
-    )
-    src = replace_once(
-        src,
-        ' + " SERVER=" + String.valueOf(server.name));\n',
-        ' + " NODE=" + displayServerAlias(server));\n',
-        "Lookup log server name"
-    )
-
-    # Protect historical server identity strings. Older versions placed the
-    # canonical connection key (including credentials and endpoint) in a plain
-    # SharedPreferences StringSet. New history is serialized only inside AES-GCM.
-    old_history_method = ''' /** * Normalizes the existing history once when upgrading from the former * raw-JSON key format, then keeps future reads on the canonical key format. */ private LinkedHashSet<String> getCanonicalServerHistory( android.content.SharedPreferences prefs) { LinkedHashSet<String> normalized = new LinkedHashSet<>(); int historyVersion = prefs.getInt("history_key_version", 0); if (historyVersion >= 3) { normalized.addAll(prefs.getStringSet( "used_servers", java.util.Collections.emptySet())); return normalized; } // Versions 0-2 could contain servers remembered by ping-only scans. // Those entries were never proven through the full VPN tunnel, so reset // them once rather than excluding good servers indefinitely. prefs.edit() .remove("used_servers") .putInt("history_key_version", 3) .apply(); return normalized; } '''
-    new_history_method = ''' /** Reads server history only from the Keystore-encrypted store. */ private LinkedHashSet<String> getCanonicalServerHistory( android.content.SharedPreferences prefs) { LinkedHashSet<String> normalized = new LinkedHashSet<>(); int historyVersion = prefs.getInt("history_key_version", 0); if (historyVersion >= 4) { String raw = KalaniSecureStore.getString( this, "kalani_server_history", "used_servers_json", "[]"); try { JSONArray array = new JSONArray(raw); for (int i = 0; i < array.length(); i++) { String value = array.optString(i, ""); if (!value.isEmpty()) normalized.add(value); } } catch (Exception invalidHistory) { KalaniSecureStore.removeString( this, "kalani_server_history", "used_servers_json"); } return normalized; } // Version 3 held canonical JSON/URI identities in a plaintext StringSet. // Migrate to encrypted storage before removing the legacy copy. if (historyVersion == 3) { java.util.Set<String> legacy = prefs.getStringSet( "used_servers", java.util.Collections.emptySet()); if (legacy != null) normalized.addAll(legacy); } JSONArray migrated = new JSONArray(); for (String value : normalized) migrated.put(value); boolean saved = KalaniSecureStore.putString( this, "kalani_server_history", "used_servers_json", migrated.toString()); prefs.edit().remove("used_servers") .putInt("history_key_version", 4).commit(); if (!saved) normalized.clear(); return normalized; } '''
-    src = replace_once(src, old_history_method, new_history_method,
-                       "Encrypted server history migration")
-
-    old_history_write = ''' prefs.edit() .putStringSet("used_servers", used) .putInt("history_key_version", 3) .apply(); '''
-    new_history_write = ''' JSONArray history = new JSONArray(); for (String item : used) history.put(item); boolean saved = KalaniSecureStore.putString( this, "kalani_server_history", "used_servers_json", history.toString()); prefs.edit().remove("used_servers") .putInt("history_key_version", 4).apply(); if (!saved) android.util.Log.w( "KALANI_SECURE_STORE", "Server history was not persisted because encryption failed"); '''
-    src = replace_once(src, old_history_write, new_history_write,
-                       "Encrypted server history write")
-
-    # Per-server handset benchmarks are also stored encrypted. Their cache key
-    # is a keyed, installation-specific alias instead of a reversible identity.
-    old_metrics_read = ''' JSONObject saved = new JSONObject(getSharedPreferences( "kalani_device_metrics", MODE_PRIVATE).getString(key, "{}")); '''
-    new_metrics_read = ''' JSONObject saved = new JSONObject(KalaniSecureStore.getString( this, "kalani_device_metrics", key, "{}")); '''
-    src = replace_once(src, old_metrics_read, new_metrics_read,
-                       "Encrypted device metrics read")
-
-    old_metrics_write = ''' getSharedPreferences("kalani_device_metrics", MODE_PRIVATE) .edit().putString(key, saved.toString()).apply(); '''
-    new_metrics_write = ''' if (!KalaniSecureStore.putString( this, "kalani_device_metrics", key, saved.toString())) { android.util.Log.w("KALANI_SECURE_STORE", "Device benchmark metadata encryption failed"); } '''
-    src = replace_once(src, old_metrics_write, new_metrics_write,
-                       "Encrypted device metrics write")
-
-    old_metric_key = ''' private String deviceMetricKey(Server server) { try { String identity = canonicalServerKey(server.outbound.toString()); byte[] digest = java.security.MessageDigest.getInstance("SHA-256") .digest(identity.getBytes(java.nio.charset.StandardCharsets.UTF_8)); StringBuilder key = new StringBuilder("node_"); for (byte value : digest) key.append(String.format(Locale.US, "%02x", value & 0xff)); return key.toString(); } catch (Exception error) { return ""; } } '''
-    new_metric_key = ''' private String deviceMetricKey(Server server) { if (server == null || server.outbound == null) return ""; String identity = canonicalServerKey(server.outbound.toString()); String opaque = KalaniSecureStore.opaqueId(this, identity); return opaque.startsWith("NODE-") && !"NODE-LOCAL".equals(opaque) ? "metric_" + opaque : ""; } '''
-    src = replace_once(src, old_metric_key, new_metric_key,
-                       "HMAC device metric identity")
-
-    old_exit_key = ''' private String verifiedExitStorageKey(Server server) { if (server == null || server.outbound == null) return ""; try { // Keep the existing metadata-cache key format to preserve cached // verified-exit records created by previous app versions. byte[] input = server.outbound.toString() .getBytes(java.nio.charset.StandardCharsets.UTF_8); byte[] digest = java.security.MessageDigest .getInstance("SHA-256").digest(input); StringBuilder key = new StringBuilder("server_"); for (byte b : digest) { key.append(String.format(Locale.US, "%02x", b & 0xff)); } return key.toString(); } catch (Exception ignored) { return ""; } } '''
-    new_exit_key = ''' private String verifiedExitStorageKey(Server server) { if (server == null || server.outbound == null) return ""; String identity = canonicalServerKey(server.outbound.toString()); String opaque = KalaniSecureStore.opaqueId(this, identity); return opaque.startsWith("NODE-") && !"NODE-LOCAL".equals(opaque) ? "exit_" + opaque : ""; } '''
-    src = replace_once(src, old_exit_key, new_exit_key,
-                       "HMAC verified-exit metadata identity")
-
-    legacy_cleanup = ''' private void clearLegacyServerMetadata() { android.content.SharedPreferences state = getSharedPreferences( "kalani_engine_state", MODE_PRIVATE); if (state.getBoolean("security_plain_metadata_purged_v1", false)) return; // These two legacy caches stored per-node metadata in clear text. Their // values are cheap to recompute, so remove them rather than preserve a // linkable server identity outside the encrypted store. getSharedPreferences("kalani_device_metrics", MODE_PRIVATE) .edit().clear().commit(); getSharedPreferences("kalani_verified_exit_metadata", MODE_PRIVATE) .edit().clear().commit(); // Migrate the current recent-route identity into Keystore-backed storage, // then erase legacy display labels and endpoint addresses. KalaniSecureStore.getString( this, "kalani_recent_connection", "server_key", ""); KalaniSecureStore.getString( this, "kalani_recent_connection", "country", ""); KalaniSecureStore.getString( this, "kalani_recent_connection", "flag", "🌐"); KalaniSecureStore.removeString( this, "kalani_recent_connection", "server_name"); KalaniSecureStore.removeString( this, "kalani_recent_connection", "server_ip"); state.edit().putBoolean("security_plain_metadata_purged_v1", true).commit(); android.util.Log.i("KALANI_SECURE_STORE", "Legacy plaintext node metadata purged"); } '''
-    src = replace_once(
-        src,
-        ''' private void loadServers(boolean manualRefresh) { clearPreSingBoxServerSnapshots(); ''',
-        ''' private void loadServers(boolean manualRefresh) { clearPreSingBoxServerSnapshots(); clearLegacyServerMetadata(); ''',
-        "Legacy metadata cleanup call"
-    )
-    alias_anchor = ''' private void clearPreSingBoxServerSnapshots() { '''
-    src = replace_once(src, alias_anchor, legacy_cleanup + "\n" + alias_anchor,
-                       "Legacy metadata cleanup helper")
-
-    return src
-
-
-def patch_worker(src: str) -> str:
-    src = replace_count(
-        src,
-        ''' JSONArray old = new JSONArray( prefs.getString("servers_json", "[]")); ''',
-        ''' JSONArray old = new JSONArray(KalaniSecureStore.getString( context, "kalani_ready_pool", "servers_json", "[]")); ''',
-        2,
-        "Worker ready pool reads"
-    )
-    src = replace_count(
-        src,
-        ''' boolean committed = prefs.edit() .putString("servers_json", output.toString()) .commit(); if (!committed) { ''',
-        ''' boolean committed = KalaniSecureStore.putString( context, "kalani_ready_pool", "servers_json", output.toString()); if (!committed) { ''',
-        2,
-        "Worker ready pool writes"
-    )
-    src = replace_count(
-        src,
-        ''' android.content.SharedPreferences prefs = context.getSharedPreferences( "kalani_ready_pool", Context.MODE_PRIVATE); ''',
-        "",
-        2,
-        "Worker obsolete plaintext preference handles"
-    )
-    return src
-
-
-def patch_service(src: str) -> str:
-    src = replace_once(
-        src,
-        ''' private void saveConnectionConfig(String json) { activeConfigJson = json; getSharedPreferences("kalani_vpn_recovery", MODE_PRIVATE) .edit() .putInt("engine_config_version", 2) .putString("last_singbox_config", json) .apply(); } ''',
-        ''' private void saveConnectionConfig(String json) { activeConfigJson = json; getSharedPreferences("kalani_vpn_recovery", MODE_PRIVATE) .edit().putInt("engine_config_version", 2).apply(); if (!KalaniSecureStore.putString( this, "kalani_vpn_recovery", "last_singbox_config", json)) { Log.e(TAG, "Secure recovery configuration could not be saved"); } } ''',
-        "Recovery config save"
-    )
-    src = replace_once(
-        src,
-        ''' preferences.edit() .remove("last_singbox_config") .putInt("engine_config_version", 2) .apply(); ''',
-        ''' KalaniSecureStore.removeString( this, "kalani_vpn_recovery", "last_singbox_config"); preferences.edit().putInt("engine_config_version", 2).apply(); ''',
-        "Legacy recovery config removal"
-    )
-    src = replace_once(
-        src,
-        ' return preferences.getString("last_singbox_config", null);\n',
-        ' return KalaniSecureStore.getString(\n'
-        ' this, "kalani_vpn_recovery", "last_singbox_config", null);\n',
-        "Recovery config restore"
-    )
-    src = replace_once(
-        src,
-        ''' getSharedPreferences("kalani_vpn_recovery", MODE_PRIVATE) .edit() .remove("last_singbox_config") .putInt("engine_config_version", 2) .apply(); ''',
-        ''' KalaniSecureStore.removeString( this, "kalani_vpn_recovery", "last_singbox_config"); getSharedPreferences("kalani_vpn_recovery", MODE_PRIVATE) .edit().putInt("engine_config_version", 2).apply(); ''',
-        "Recovery config clear"
-    )
-    return src
-
-
-def main() -> int:
-    print("========== KALANIVPN3 SECURITY HARDENING ==========")
-    print("Project:", ROOT)
-    if not ROOT.is_dir():
-        print("ERROR: Project folder not found; no files changed.")
-        return 2
-
-    files = {
-        "app/src/main/java/com/example/MainActivity.java": patch_main,
-        "app/src/main/java/com/example/KalaniServerPrefetchWorker.java": patch_worker,
-        "app/src/main/java/com/example/KalaniServerPoolClient.java": patch_pool_client,
-        "app/src/main/java/com/example/KalaniVpnService.java": patch_service,
-    }
-    targets: dict[Path, bytes] = {}
-    originals: dict[Path, bytes] = {}
-
-    secure_path = JAVA / "KalaniSecureStore.java"
-    signature_path = JAVA / "KalaniPoolSignature.java"
-    if secure_path.exists() or signature_path.exists():
-        print("ERROR: Security classes already exist. Refusing duplicate installation.")
-        return 3
-
-    try:
-        for relative, transformer in files.items():
-            path = ROOT / relative
-            if not path.is_file():
-                raise PatchError(f"Required file missing: {relative}")
-            data = path.read_bytes()
-            source = data.decode("utf-8")
-            transformed = transformer(source)
-            if transformed == source:
-                raise PatchError(f"No changes detected for {relative}")
-            originals[path] = data
-            targets[path] = transformed.encode("utf-8")
-
-        store_source = SECURE_STORE
-        sig_source = POOL_SIGNATURE
-        if PUBLIC_KEY_B64 not in sig_source or len(PUBLIC_KEY_B64) < 80:
-            raise PatchError("Pinned Pool public key was not embedded")
-        targets[secure_path] = store_source.encode("utf-8")
-        targets[signature_path] = sig_source.encode("utf-8")
-
-        # All transformations and marker checks have succeeded. Back up every file.
-        stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        backups: list[tuple[Path, Path | None]] = []
-        for target in targets:
-            if target.exists():
-                backup = target.with_name(target.name + ".before_security_" + stamp)
-                shutil.copy2(target, backup)
-                backups.append((target, backup))
-            else:
-                backups.append((target, None))
-
-        written: list[Path] = []
-        try:
-            for path, data in targets.items():
-                path.parent.mkdir(parents=True, exist_ok=True)
-                write_atomic(path, data)
-                if path.read_bytes() != data:
-                    raise PatchError(f"Read-back verification failed: {path}")
-                written.append(path)
-        except Exception:
-            # Restore existing files and remove newly-created files on any failure.
-            for path, backup in reversed(backups):
-                try:
-                    if backup is None:
-                        if path.exists(): path.unlink()
-                    else:
-                        shutil.copy2(backup, path)
-                except Exception:
-                    pass
-            raise
-
-        print("PATCH RESULT: SUCCESS")
-        print("Added: KalaniSecureStore.java (Android Keystore AES-256-GCM + HMAC aliases)")
-        print("Added: KalaniPoolSignature.java (pinned P-256 ECDSA/SHA-256 verification)")
-        print("Encrypted at rest: signed Pool, active/standby pools, recovery config,")
-        print(" recent route, server history, device metrics, exit metadata")
-        print("Legacy plaintext endpoint/history/metric caches: migration cleanup enabled")
-        print("UI: opaque HMAC-derived node aliases; raw server endpoint/name hidden")
-        print("Transport/TUN/lifecycle: unchanged")
-        print("Backups:")
-        for target, backup in backups:
-            if backup is not None: print(" ", backup)
-        print("SHA256:")
-        for path, data in targets.items():
-            print(" ", path.relative_to(ROOT), sha256(data))
-        print("IMPORTANT: The app will reject the Pool until server-pool.json.sig is published.")
-        print("Add GitHub Actions secret KALANI_POOL_SIGNING_KEY_B64, then run the Pool workflow.")
-        return 0
-
-    except Exception as error:
-        print("ERROR:", str(error))
-        print("NO FILES WERE CHANGED (or all changed files were rolled back).")
-        return 4
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())
+          echo "::error::Could not publish the verified pool after $max_attempts attempts."
+          exit 1
