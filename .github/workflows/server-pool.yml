@@ -43,7 +43,7 @@ jobs:
             exit 1
           fi
           if [ -z "$KALANI_POOL_SIGNING_KEY_B64" ]; then
-            echo "::error::Repository Actions secret KALANI_POOL_SIGNING_KEY_B64 is missing. Add the Base64-encoded PEM private key that matches the public key pinned in the Android app."
+            echo "::error::Repository Actions secret KALANI_POOL_SIGNING_KEY_B64 is missing. Add the matching PEM private key, either as PEM text or Base64-encoded PEM."
             exit 1
           fi
           echo "Required Actions secrets are present. Their values will not be printed."
@@ -123,8 +123,29 @@ jobs:
           trap 'rm -f "$KEY_FILE" "$PUBLIC_PEM" "$PUBLIC_DER" "$SIGNATURE_DER"' EXIT
           umask 077
 
-          printf '%s' "$KALANI_POOL_SIGNING_KEY_B64" | base64 --decode > "$KEY_FILE"
-          openssl pkey -in "$KEY_FILE" -noout >/dev/null
+          # Accept either a PEM private key pasted directly into the GitHub
+          # Secret, or a Base64-encoded PEM. Strip only surrounding whitespace
+          # from the Base64 representation; never decode a PEM block as Base64.
+          SECRET_VALUE="${KALANI_POOL_SIGNING_KEY_B64%$'\r'}"
+          if [[ "$SECRET_VALUE" == *"-----BEGIN "* ]]; then
+            printf '%s\n' "$SECRET_VALUE" > "$KEY_FILE"
+          else
+            CLEAN_B64="$(printf '%s' "$SECRET_VALUE" | tr -d '[:space:]')"
+            CLEAN_B64="${CLEAN_B64#base64:}"
+            if [[ ! "$CLEAN_B64" =~ ^[A-Za-z0-9+/]*={0,2}$ ]]; then
+              echo '::error::KALANI_POOL_SIGNING_KEY_B64 is neither PEM text nor valid standard Base64. Store the matching PEM private key directly, or store base64 of that PEM.'
+              exit 1
+            fi
+            if ! printf '%s' "$CLEAN_B64" | base64 --decode > "$KEY_FILE"; then
+              echo '::error::Could not decode KALANI_POOL_SIGNING_KEY_B64. Check that the GitHub Secret contains the full Base64 value, not the public key or a truncated value.'
+              exit 1
+            fi
+          fi
+
+          if [ ! -s "$KEY_FILE" ] || ! openssl pkey -in "$KEY_FILE" -check -noout >/dev/null 2>&1; then
+            echo '::error::The signing secret did not contain a valid, unencrypted PEM private key.'
+            exit 1
+          fi
           openssl pkey -in "$KEY_FILE" -pubout -out "$PUBLIC_PEM"
           openssl pkey -in "$KEY_FILE" -pubout -outform DER -out "$PUBLIC_DER"
 
