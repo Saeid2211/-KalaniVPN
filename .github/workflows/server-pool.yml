@@ -150,7 +150,7 @@ jobs:
           openssl pkey -in "$KEY_FILE" -pubout -outform DER -out "$PUBLIC_DER"
 
           ACTUAL_PUBLIC_KEY_B64="$(base64 --wrap=0 "$PUBLIC_DER")"
-          EXPECTED_PUBLIC_KEY_B64='MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEJJ3N8I2t6WWBh/t5JRF0NfoYrpuJO9gM2lZBntbrO0bN/KoCEIr5xOqQIbE4aZlhsX9sJMIAP292i0A+l+y7Zw=='
+          EXPECTED_PUBLIC_KEY_B64='MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAExcJitVyAY8vxJPunna+368tTSD1rGPFQG4/0WtxD5UTN/50TtuqiYvDiNf0c3eBYZxP2rfPgRZn0QxN431k8oQ=='
           if [ "$ACTUAL_PUBLIC_KEY_B64" != "$EXPECTED_PUBLIC_KEY_B64" ]; then
             echo '::error::Signing key does not match the P-256 public key pinned in the Android app. No signature was published.'
             exit 1
